@@ -38,25 +38,36 @@ function fromRow(r:any): Booking {
 
 export async function loadBookings(): Promise<Booking[]> {
   if (!supabaseConfigured) return [];
-  const rows = await selectRows<any>("booking_items", "select=id,qty,product_id,booking_id,bookings(id,code,start_date,end_date,status,created_at,customers(name,phone))&bookings.status=neq.cancelled&order=created_at.desc");
-  return rows.map((r:any)=>{
-    // PostgREST can expose a many-to-one relation as `bookings` (the
-    // relation name) rather than the singular `booking`. Support both so
-    // records loaded from Supabase always get their dates and customer data.
-    const b = Array.isArray(r.bookings) ? r.bookings[0] : (r.bookings ?? r.booking ?? null);
-    return fromRow({
-      ...r,
-      id:b?.id ?? r.booking_id,
-      code:b?.code,
-      product_id:r.product_id,
-      start_date:b?.start_date,
-      end_date:b?.end_date,
-      status:b?.status,
-      created_at:b?.created_at,
-      name:b?.customers?.name,
-      phone:b?.customers?.phone,
-    });
-  });
+
+  const rows = await selectRows<any>(
+    "booking_items",
+    "select=id,qty,product_id,booking_id,bookings(id,code,start_date,end_date,status,created_at,customers(name,phone))&bookings.status=neq.cancelled&order=created_at.desc",
+  );
+
+  return rows
+    .map((r: any) => {
+      const b = Array.isArray(r.bookings)
+        ? r.bookings[0]
+        : (r.bookings ?? r.booking ?? null);
+
+      // Abaikan booking_item yang sudah tidak mempunyai
+      // pasangan pada tabel bookings.
+      if (!b?.id) return null;
+
+      return fromRow({
+        ...r,
+        id: b.id,
+        code: b.code ?? "",
+        product_id: r.product_id,
+        start_date: b.start_date ?? "",
+        end_date: b.end_date ?? "",
+        status: b.status ?? "confirmed",
+        created_at: b.created_at ?? "",
+        name: b.customers?.name ?? "",
+        phone: b.customers?.phone ?? "",
+      });
+    })
+    .filter((b): b is Booking => b !== null);
 }
 
 export async function saveBookingGroup(common: Pick<Booking,"start"|"end"|"name"|"phone">, items:{productId:string;qty:number}[]) {
