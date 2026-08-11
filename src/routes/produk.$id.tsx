@@ -1,6 +1,7 @@
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { ArrowLeft, Boxes, Check } from "lucide-react";
 
+import { ProductImage } from "@/components/product-image";
 import { ProductCard } from "@/components/product-card";
 import { SiteLayout } from "@/components/site-layout";
 import { StatusBadge } from "@/components/status-badge";
