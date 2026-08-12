@@ -184,46 +184,64 @@ function Booking() {
                       />
                     </button>
                     <div className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Koleksi</Label>
-                      <Select
-                        value={row.product.id}
-                        onValueChange={(v) => setItem(index, { productId: v, qty: 1 })}
-                      >
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Pilih koleksi" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {products
-                            .filter(
-                              (p) =>
-                                p.id === row.product.id ||
-                                !items.some((i) => i.productId === p.id),
-                            )
-                            .map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name} · {p.category}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Ketersediaan pada tanggal terpilih</Label>
-                      <div className="flex h-9 items-center gap-3">
-                        <StatusBadge
-                          status={
-                            row.maxQty === 0 ? "Habis" : row.maxQty <= 2 ? "Terbatas" : "Tersedia"
-                          }
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {row.maxQty} dari {row.product.stock} {row.product.unit} bebas
-                        </span>
-                      </div>
-                    </div>
-                    </div>
-                  </div>
+  <div className="space-y-2">
+    <Label>Koleksi</Label>
 
+    <Select
+      value={row.product.id}
+      onValueChange={(v) => setItem(index, { productId: v, qty: 1 })}
+    >
+      <SelectTrigger className="rounded-xl">
+        <SelectValue placeholder="Pilih koleksi" />
+      </SelectTrigger>
+
+      <SelectContent>
+        {products
+          .filter(
+            (p) =>
+              p.id === row.product.id ||
+              !items.some((i) => i.productId === p.id),
+          )
+          .map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              {p.name} · {p.category}
+            </SelectItem>
+          ))}
+      </SelectContent>
+    </Select>
+  </div>
+
+  <div className="space-y-2">
+    <div className="flex h-9 items-center">
+      <StatusBadge
+        status={
+          row.maxQty === 0
+            ? "Habis"
+            : row.maxQty <= 2
+              ? "Terbatas"
+              : "Tersedia"
+        }
+      />
+    </div>
+
+    <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+      <span>
+        Keluar:{" "}
+        <strong className="text-destructive">
+          {Math.max(row.product.stock - row.maxQty, 0)} {row.product.unit}
+        </strong>
+      </span>
+
+      <span>
+        Sisa:{" "}
+        <strong className="text-success">
+          {row.maxQty} {row.product.unit}
+        </strong>
+      </span>
+    </div>
+  </div>
+  </div>
+  </div>
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     <Button
                       type="button"
