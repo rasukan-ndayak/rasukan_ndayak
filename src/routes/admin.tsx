@@ -12,7 +12,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 function safeFormatDate(
   value?: string | null,
@@ -71,6 +71,34 @@ const menu = [
   { key: "Laporan", icon: BarChart3 },
   { key: "Pengaturan", icon: Settings },
 ] as const;
+
+// NOTIF KHUSUS ADMIN - HANYA MUNCUL KALAU ADA YANG KELUAR
+function JadwalKeluarAlert() {
+  const { bookings } = useBookings();
+  const keluarHariIni = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return bookings.filter((b: any) => (b.start || "").slice(0, 10) === today);
+  }, [bookings]);
+
+  if (keluarHariIni.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border-2 border-red-500 bg-red-50 p-5 animate-pulse">
+      <h3 className="font-black text-red-600 text-lg">🔔 ADA {keluarHariIni.length} JADWAL KELUAR HARI INI!</h3>
+      <div className="mt-3 grid gap-2">
+        {keluarHariIni.map((b: any) => (
+          <div key={b.id} className="flex justify-between items-center bg-white rounded-xl p-3 shadow">
+            <div>
+              <p className="font-bold">{b.productId} - {b.name}</p>
+              <p className="text-xs text-gray-500">{b.phone} • {safeFormatDate(b.start)} → {safeFormatDate(b.end)}</p>
+            </div>
+            <a href={`https://wa.me/${String(b.phone).replace(/[^0-9]/g, "")}?text=Halo%20${b.name},%20kostum%20siap%20diambil%20hari%20ini`} target="_blank" className="rounded-full bg-green-500 px-4 py-1.5 text-xs font-bold text-white">WA</a>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function Admin() {
   const [active, setActive] = useState<string>("Dashboard");
