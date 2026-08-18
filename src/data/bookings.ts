@@ -102,3 +102,5 @@ export function stockOf(productId:string){ return products.find(p=>p.id===produc
 export function availableInRange(bookings:Booking[],productId:string,start:string,end:string,excludeBookingId?:string){ const stock=stockOf(productId); const days=occupiedDays(start,end); const scoped=excludeBookingId?bookings.filter(b=>b.id!==excludeBookingId):bookings; const perDay=days.map(day=>({day,available:stock-bookedQtyOn(scoped,productId,day)})); const available=perDay.length?Math.min(...perDay.map(d=>d.available)):stock; return {available,conflicts:perDay.filter(d=>d.available<=0)}; }
 export type DayStatus="Kosong"|"Terisi"|"Penuh";
 export function dayStatusFor(bookings:Booking[],dayKey:string,productId?:string){ if(productId){const capacity=stockOf(productId),out=bookedQtyOn(bookings,productId,dayKey);return {status:out===0?"Kosong":out>=capacity?"Penuh":"Terisi" as DayStatus,out,capacity};} const capacity=products.reduce((s,p)=>s+p.stock,0),out=totalOutOn(bookings,dayKey);return {status:out===0?"Kosong":out>=capacity?"Penuh":"Terisi" as DayStatus,out,capacity}; }
+
+ 
