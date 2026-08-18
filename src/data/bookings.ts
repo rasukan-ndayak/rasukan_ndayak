@@ -102,5 +102,40 @@ export function stockOf(productId:string){ return products.find(p=>p.id===produc
 export function availableInRange(bookings:Booking[],productId:string,start:string,end:string,excludeBookingId?:string){ const stock=stockOf(productId); const days=occupiedDays(start,end); const scoped=excludeBookingId?bookings.filter(b=>b.id!==excludeBookingId):bookings; const perDay=days.map(day=>({day,available:stock-bookedQtyOn(scoped,productId,day)})); const available=perDay.length?Math.min(...perDay.map(d=>d.available)):stock; return {available,conflicts:perDay.filter(d=>d.available<=0)}; }
 export type DayStatus="Kosong"|"Terisi"|"Penuh";
 export function dayStatusFor(bookings:Booking[],dayKey:string,productId?:string){ if(productId){const capacity=stockOf(productId),out=bookedQtyOn(bookings,productId,dayKey);return {status:out===0?"Kosong":out>=capacity?"Penuh":"Terisi" as DayStatus,out,capacity};} const capacity=products.reduce((s,p)=>s+p.stock,0),out=totalOutOn(bookings,dayKey);return {status:out===0?"Kosong":out>=capacity?"Penuh":"Terisi" as DayStatus,out,capacity}; }
+// ===== TERLARIS OTOMATIS BERDASARKAN BOOKING =====
+export function getRentalCountMap(bookings: Booking[]) {
+  const map: Record<string, number> = {};
+  for (const b of bookings) {
+    if (b.status === "cancelled") continue;
+    map[b.productId] = (map[b.productId] || 0) + Number(b.qty || 0);
+  }
+  return map;
+}
 
- 
+export function getTerlarisByKategori(bookings: Booking[], limit = 4) {
+  const countMap = getRentalCountMap(bookings);
+  const grouped = new Map<string, Product[]>();
+
+  for (const p of products) {
+    const rawKat = (p as any).kategori || (p as any).category || "lainnya";
+    const kat = String(rawKat).toLowerCase();
+    if (!grouped.has(kat)) grouped.set(kat, []);
+    grouped.get(kat)!.push(p);
+  }
+
+  const result: Record<string, Product[]> = {};
+  for (const [kat, list] of grouped.entries()) {
+    const sorted = [...list].sort(
+      (a, b) => (countMap[b.id] || 0) - (countMap[a.id] || 0)
+    );
+    result[kat] = sorted.slice(0, limit);
+  }
+  return result;
+}
+
+export function getTerlarisGlobal(bookings: Booking[], limit = 8) {
+  const countMap = getRentalCountMap(bookings);
+  return [...products]
+  .sort((a: any, b: any) => (countMap[b.id] || 0) - (countMap[a.id] || 0))
+  .slice(0, limit);
+}
