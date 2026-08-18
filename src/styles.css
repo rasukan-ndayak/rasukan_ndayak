@@ -193,3 +193,12 @@
 @utility animate-rise {
   animation: rise-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

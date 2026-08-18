@@ -4,6 +4,7 @@ import {
   eachDayOfInterval,
   endOfMonth,
   format,
+  isBefore,
   isSameMonth,
   isToday,
   startOfMonth,
@@ -24,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { bookingsOn, dayStatusFor, toKey, useBookings } from "@/data/bookings";
+import { bookingsOn, dayStatusFor, toKey, useBookings, type DayStatus } from "@/data/bookings";
 import { useCatalog } from "@/data/products";
 import { cn } from "@/lib/utils";
 
@@ -73,10 +74,21 @@ function Jadwal() {
     [month],
   );
 
-  const selectedBookings = bookingsOn(bookings, selected).filter(
-    (b) => !filterId || b.productId === filterId,
-  );
-  const selectedInfo = dayStatusFor(bookings, selected, filterId);
+  const selectedDate = new Date(`${selected}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  selectedDate.setHours(0, 0, 0, 0);
+  const isSelectedPast = isBefore(selectedDate, today);
+
+  const selectedBookings = isSelectedPast
+    ? []
+    : bookingsOn(bookings, selected).filter(
+        (b) => !filterId || b.productId === filterId,
+      );
+  const baseSelectedInfo = dayStatusFor(bookings, selected, filterId);
+  const selectedInfo = isSelectedPast
+    ? { status: "Kosong" as DayStatus, out: 0, capacity: baseSelectedInfo.capacity }
+    : baseSelectedInfo;
 
   return (
     <SiteLayout>
@@ -139,7 +151,14 @@ function Jadwal() {
           <div className="mt-2 grid grid-cols-7 gap-1.5">
             {days.map((day) => {
               const key = toKey(day);
-              const { status, out } = dayStatusFor(bookings, key, filterId);
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const dayCopy = new Date(day);
+              dayCopy.setHours(0, 0, 0, 0);
+              const isPast = isBefore(dayCopy, today);
+              const { status: rawStatus, out: rawOut } = dayStatusFor(bookings, key, filterId);
+              const status = isPast ? "Kosong" : rawStatus;
+              const out = isPast ? 0 : rawOut;
               const inMonth = isSameMonth(day, month);
               return (
                 <button
