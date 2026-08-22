@@ -85,6 +85,70 @@ function Jadwal() {
     : bookingsOn(bookings, selected).filter(
         (b) => !filterId || b.productId === filterId,
       );
+  const selectedBookingGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        name: string;
+        code: string;
+        start: string;
+        items: Array<{ productId: string; qty: number }>;
+      }
+    >();
+
+    for (const booking of selectedBookings) {
+      // Kode booking hanya dipakai secara internal untuk memisahkan transaksi.
+      // Kode tidak ditampilkan pada tabel.
+      const groupKey = booking.code || booking.id;
+      const existing = groups.get(groupKey);
+
+      if (existing) {
+        existing.items.push({
+          productId: booking.productId,
+          qty: booking.qty,
+        });
+      } else {
+        groups.set(groupKey, {
+          name: booking.name,
+          code: booking.code,
+          start: booking.start,
+          items: [{
+            productId: booking.productId,
+            qty: booking.qty,
+          }],
+        });
+      }
+    }
+
+    return Array.from(groups.values());
+  }, [selectedBookings]);
+
+  const selectedCollectionDetails = useMemo(() => {
+    const details = new Map<string, { name: string; total: number; out: number }>();
+
+    for (const booking of selectedBookings) {
+      const product = getProduct(booking.productId);
+      if (!product) continue;
+
+      const existing = details.get(booking.productId);
+      if (existing) {
+        existing.out += booking.qty;
+      } else {
+        details.set(booking.productId, {
+          name: product.name,
+          total: product.stock,
+          out: booking.qty,
+        });
+      }
+    }
+
+    return Array.from(details.entries()).map(([productId, detail]) => ({
+      productId,
+      ...detail,
+      remaining: Math.max(detail.total - detail.out, 0),
+    }));
+  }, [selectedBookings, products]);
+
   const baseSelectedInfo = dayStatusFor(bookings, selected, filterId);
   const selectedInfo = isSelectedPast
     ? { status: "Kosong" as DayStatus, out: 0, capacity: baseSelectedInfo.capacity }
@@ -213,29 +277,98 @@ function Jadwal() {
           </div>
 
           <div className="surface-card p-6">
-            <h3 className="text-lg">Booking pada tanggal ini</h3>
+            <h3 className="text-lg">1. Rincian Koleksi</h3>
+            {selectedCollectionDetails.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Belum ada koleksi yang keluar pada tanggal ini.
+              </p>
+            ) : (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/60">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                        Koleksi
+                      </th>
+                      <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                        Total
+                      </th>
+                      <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                        Keluar
+                      </th>
+                      <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                        Sisa
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedCollectionDetails.map((item) => (
+                      <tr key={item.productId} className="border-t border-border">
+                        <td className="px-4 py-3 font-medium">{item.name}</td>
+                        <td className="px-4 py-3 text-right">{item.total} unit</td>
+                        <td className="px-4 py-3 text-right font-semibold text-primary">
+                          {item.out} unit
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold">
+                          {item.remaining} unit
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="surface-card p-6">
+            <h3 className="text-lg">2. Booking pada tanggal ini</h3>
             {selectedBookings.length === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">
                 Belum ada barang keluar. Tanggal ini kosong dan bisa dipesan.
               </p>
             ) : (
-              <ul className="mt-4 space-y-3">
-                {selectedBookings.map((b) => (
-                  <li key={b.id} className="rounded-xl border border-border p-4 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-medium">{getProduct(b.productId)?.name ?? b.productId}</p>
-                      <span className="shrink-0 rounded-full bg-primary-soft px-2.5 py-1 text-xs text-primary">
-                        {b.qty} unit
-                      </span>
+              <div className="mt-4 space-y-4">
+                {selectedBookingGroups.map((group) => (
+                  <div
+                    key={group.code || `${group.name}-${group.start}`}
+                    className="overflow-hidden rounded-xl border border-border"
+                  >
+                    <div className="border-b border-border bg-secondary px-4 py-3">
+                      <p className="font-semibold">{group.name}</p>
                     </div>
-                    <p className="mt-1 text-muted-foreground">{b.name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Keluar {format(new Date(`${b.start}T00:00:00`), "d MMM", { locale: localeId })} · Masuk{" "}
-                      {format(new Date(`${b.end}T00:00:00`), "d MMM yyyy", { locale: localeId })} · {b.code}
-                    </p>
-                  </li>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border bg-background">
+                            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
+                              Koleksi
+                            </th>
+                            <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">
+                              Unit
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.items.map((item, index) => (
+                            <tr
+                              key={`${group.code}-${item.productId}-${index}`}
+                              className="border-b border-border last:border-b-0"
+                            >
+                              <td className="px-4 py-3 font-medium">
+                                {getProduct(item.productId)?.name ?? item.productId}
+                              </td>
+                              <td className="px-4 py-3 text-right font-semibold text-primary">
+                                {item.qty} unit
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </div>
         </aside>

@@ -1,7 +1,15 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { id as localeId } from "date-fns/locale";
-import { AlertTriangle, CalendarIcon, CheckCircle2, Minus, Plus, Search, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarIcon,
+  CheckCircle2,
+  Minus,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -39,7 +47,8 @@ export const Route = createFileRoute("/kelola-booking")({
       { property: "og:title", content: "Ubah atau Batalkan Booking — Rasukan Ndayak" },
       {
         property: "og:description",
-        content: "Kelola jadwal sewa Anda: ubah tanggal, ubah jumlah unit tiap item, atau batalkan booking.",
+        content:
+          "Kelola jadwal sewa Anda: ubah tanggal, ubah jumlah unit tiap item, atau batalkan booking.",
       },
     ],
   }),
@@ -60,7 +69,7 @@ function KelolaBooking() {
   const [end, setEnd] = useState<Date | undefined>();
   const [qtys, setQtys] = useState<Record<string, number>>({});
 
-  const groupKey = group.map((b) => `${b.id}:${b.qty}`).join("|");
+  const groupKey = group.map((b) => `${b.id}:${b.qty}:${b.start}:${b.end}`).join("|");
   useEffect(() => {
     if (!head) return;
     setStart(parseISO(head.start));
@@ -78,8 +87,11 @@ function KelolaBooking() {
       const product = products.find((p) => p.id === b.productId);
       const range =
         start && end
-          ? availableInRange(bookings, b.productId, toKey(start), toKey(end), b.id)
-          : { available: product?.stock ?? 0, conflicts: [] as { day: string; available: number }[] };
+          ? availableInRange(bookings, b.productId, toKey(start), toKey(end), b.bookingId)
+          : {
+              available: product?.stock ?? 0,
+              conflicts: [] as { day: string; available: number }[],
+            };
       const maxQty = Math.max(range.available, 0);
       const qty = Math.min(Math.max(qtys[b.id] ?? b.qty, 1), Math.max(maxQty, 1));
       return {
@@ -192,7 +204,10 @@ function KelolaBooking() {
                 <h2 className="text-2xl">Item dalam Nota</h2>
                 <div className="mt-5 space-y-4">
                   {rows.map((row) => (
-                    <div key={row.booking.id} className="rounded-2xl border border-border p-4 sm:p-5">
+                    <div
+                      key={row.booking.id}
+                      className="rounded-2xl border border-border p-4 sm:p-5"
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate font-medium">{row.name}</p>
@@ -207,9 +222,20 @@ function KelolaBooking() {
                             size="icon"
                             className="rounded-full text-destructive"
                             onClick={() => {
-                              removeBooking(row.booking.id);
-                              refresh();
-                              toast.success(`${row.name} dihapus dari nota ${head.code}`);
+                              void (async () => {
+                                try {
+                                  await removeBooking(row.booking.id);
+                                  await refresh();
+                                  toast.success(`${row.name} dihapus dari nota ${head.code}`);
+                                } catch (error) {
+                                  toast.error("Item gagal dihapus", {
+                                    description:
+                                      error instanceof Error
+                                        ? error.message
+                                        : "Periksa koneksi Supabase lalu coba lagi.",
+                                  });
+                                }
+                              })();
                             }}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -247,8 +273,8 @@ function KelolaBooking() {
                           <Plus className="h-4 w-4" />
                         </Button>
                         <span className="text-sm text-muted-foreground">
-                          tersedia {row.maxQty} dari {row.product?.stock ?? 0} {row.unit} pada tanggal ini ·{" "}
-                          {formatIDR(row.subtotal)}
+                          tersedia {row.maxQty} dari {row.product?.stock ?? 0} {row.unit} pada
+                          tanggal ini · {formatIDR(row.subtotal)}
                         </span>
                       </div>
 
@@ -286,10 +312,7 @@ function KelolaBooking() {
                   />
                   <Row label="Durasi" value={`${days} hari`} />
                   <Row label="Jumlah item" value={`${rows.length} koleksi`} />
-                  <Row
-                    label="Total unit"
-                    value={`${rows.reduce((s, r) => s + r.qty, 0)} unit`}
-                  />
+                  <Row label="Total unit" value={`${rows.reduce((s, r) => s + r.qty, 0)} unit`} />
                 </dl>
                 <div className="mt-5 flex items-center justify-between border-t border-border pt-5">
                   <span className="text-sm text-muted-foreground">Total</span>
@@ -300,20 +323,36 @@ function KelolaBooking() {
                   size="lg"
                   className="mt-6 w-full rounded-full"
                   disabled={!canSave}
-                  onClick={() => {
+                  onClick={async () => {
                     if (!start || !end) return;
-                    rows.forEach((row) =>
-                      updateBooking(row.booking.id, {
-                        qty: row.qty,
-                        start: toKey(start),
-                        end: toKey(end),
-                      }),
-                    );
-                    refresh();
-                    toast.success(`Booking ${head.code} diperbarui`, {
-                      description: `${rows.length} item · ${days} hari. Jadwal sudah disesuaikan.`,
-                    });
-                    void navigate({ to: "/konfirmasi", search: { kode: head.code } });
+
+                    try {
+                      // Tunggu SEMUA update selesai sebelum refresh/navigasi.
+                      // Sebelumnya refresh() dipanggil terlalu cepat sehingga
+                      // halaman kembali membaca data lama dari Supabase.
+                      await Promise.all(
+                        rows.map((row) =>
+                          updateBooking(row.booking.id, {
+                            qty: row.qty,
+                            start: toKey(start),
+                            end: toKey(end),
+                          }),
+                        ),
+                      );
+
+                      await refresh();
+                      toast.success(`Booking ${head.code} diperbarui`, {
+                        description: `${rows.length} item · ${days} hari. Jadwal sudah disesuaikan.`,
+                      });
+                      void navigate({ to: "/konfirmasi", search: { kode: head.code } });
+                    } catch (error) {
+                      toast.error("Perubahan booking gagal disimpan", {
+                        description:
+                          error instanceof Error
+                            ? error.message
+                            : "Periksa koneksi Supabase lalu coba lagi.",
+                      });
+                    }
                   }}
                 >
                   {anyFull ? "Tanggal Penuh" : "Simpan Perubahan"}

@@ -1,4 +1,4 @@
-import { FolderPlus, ImageUp, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarRange, FolderPlus, ImageUp, Loader2, Pencil, Plus, Trash2, Wrench } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { optimizeImage } from "@/lib/image-upload";
+import { useMaintenance } from "@/data/maintenance";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import {
   addProductRemote,
@@ -83,6 +84,12 @@ export function AdminProducts({
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(categories[0]!));
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const { maintenance, add: addMaintenance, remove: removeMaintenance } = useMaintenance();
+  const [maintenanceProduct, setMaintenanceProduct] = useState<Product | null>(null);
+  const [maintenanceStart, setMaintenanceStart] = useState("");
+  const [maintenanceEnd, setMaintenanceEnd] = useState("");
+  const [maintenanceNote, setMaintenanceNote] = useState("");
+  const [maintenanceSaving, setMaintenanceSaving] = useState(false);
   
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -185,6 +192,43 @@ export function AdminProducts({
     setDraft(toDraft(p));
     setError(null);
     setOpen(true);
+  };
+
+  const openMaintenance = (p: Product) => {
+    setMaintenanceProduct(p);
+    setMaintenanceStart("");
+    setMaintenanceEnd("");
+    setMaintenanceNote("");
+  };
+
+  const submitMaintenance = async () => {
+    if (!maintenanceProduct) return;
+    if (!maintenanceStart || !maintenanceEnd) {
+      toast.error("Tanggal mulai dan tanggal selesai wajib diisi.");
+      return;
+    }
+    if (maintenanceEnd < maintenanceStart) {
+      toast.error("Tanggal selesai tidak boleh sebelum tanggal mulai.");
+      return;
+    }
+
+    setMaintenanceSaving(true);
+    try {
+      await addMaintenance({
+        productId: maintenanceProduct.id,
+        startDate: maintenanceStart,
+        endDate: maintenanceEnd,
+        note: maintenanceNote.trim(),
+      });
+      toast.success(`${maintenanceProduct.name} ditandai dalam masa perawatan.`);
+      setMaintenanceStart("");
+      setMaintenanceEnd("");
+      setMaintenanceNote("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menyimpan jadwal perawatan.");
+    } finally {
+      setMaintenanceSaving(false);
+    }
   };
 
   const submit = async () => {
@@ -352,6 +396,15 @@ export function AdminProducts({
                       size="icon"
                       variant="outline"
                       className="rounded-full"
+                      aria-label={`Atur perawatan ${p.name}`}
+                      onClick={() => openMaintenance(p)}
+                    >
+                      <Wrench className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="rounded-full"
                       aria-label={`Ubah ${p.name}`}
                       onClick={() => startEdit(p)}
                     >
@@ -388,6 +441,118 @@ export function AdminProducts({
           e.target.value = "";
         }}
       />
+
+      <Dialog
+        open={Boolean(maintenanceProduct)}
+        onOpenChange={(open) => {
+          if (!open) setMaintenanceProduct(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Jadwal Perawatan — {maintenanceProduct?.name}</DialogTitle>
+            <DialogDescription>
+              Pada tanggal perawatan, koleksi ini otomatis tidak dapat dibooking.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm">
+              <p className="font-semibold">Cara kerja</p>
+              <p className="mt-1 text-muted-foreground">
+                Contoh 30–31: koleksi diblokir untuk booking pada periode tersebut. Sistem juga
+                menolak booking di server agar tidak bisa ditembus dari halaman lain.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="maintenance-start">Tanggal mulai</Label>
+                <Input
+                  id="maintenance-start"
+                  type="date"
+                  value={maintenanceStart}
+                  onChange={(e) => setMaintenanceStart(e.target.value)}
+                  className="rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maintenance-end">Tanggal selesai</Label>
+                <Input
+                  id="maintenance-end"
+                  type="date"
+                  min={maintenanceStart || undefined}
+                  value={maintenanceEnd}
+                  onChange={(e) => setMaintenanceEnd(e.target.value)}
+                  className="rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="maintenance-note">Keterangan (opsional)</Label>
+              <Textarea
+                id="maintenance-note"
+                rows={2}
+                maxLength={200}
+                placeholder="Contoh: cuci, reparasi, cek kelengkapan"
+                value={maintenanceNote}
+                onChange={(e) => setMaintenanceNote(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <CalendarRange className="h-4 w-4" />
+                <p className="font-semibold">Jadwal perawatan tersimpan</p>
+              </div>
+
+              {maintenanceProduct && maintenance.filter((m) => m.productId === maintenanceProduct.id).length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  Belum ada jadwal perawatan.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {maintenance
+                    .filter((m) => m.productId === maintenanceProduct?.id)
+                    .map((m) => (
+                      <div key={m.id} className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
+                        <div className="min-w-0">
+                          <p className="font-medium">{m.startDate} → {m.endDate}</p>
+                          {m.note ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{m.note}</p> : null}
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 rounded-full text-destructive"
+                          onClick={() => {
+                            void removeMaintenance(m.id)
+                              .then(() => toast.success("Jadwal perawatan dihapus."))
+                              .catch((e) => toast.error(e instanceof Error ? e.message : "Gagal menghapus jadwal."));
+                          }}
+                        >
+                          Hapus
+                        </Button>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-full" onClick={() => setMaintenanceProduct(null)}>
+              Tutup
+            </Button>
+            <Button className="rounded-full" disabled={maintenanceSaving} onClick={() => void submitMaintenance()}>
+              {maintenanceSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Simpan Perawatan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">

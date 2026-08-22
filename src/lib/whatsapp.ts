@@ -3,7 +3,14 @@ import { id as localeId } from "date-fns/locale";
 
 export const ADMIN_WA = "6285726019040";
 
-const tgl = (v: string) => format(parseISO(v), "EEEE, d MMMM yyyy", { locale: localeId });
+const tgl = (v: string) =>
+  format(
+    parseISO(v),
+    "EEEE, d MMMM yyyy",
+    {
+      locale: localeId,
+    },
+  );
 
 export type WaBooking = {
   code: string;
@@ -16,9 +23,12 @@ export type WaBooking = {
   total: string;
   name: string;
   phone: string;
+  description: string;
 };
 
-export function buildWaMessage(b: WaBooking): string {
+export function buildWaMessage(
+  b: WaBooking,
+): string {
   return [
     "Halo Rasukan Ndayak, saya ingin konfirmasi booking:",
     "",
@@ -32,14 +42,24 @@ export function buildWaMessage(b: WaBooking): string {
     "",
     `Nama: ${b.name || "-"}`,
     `WhatsApp: ${b.phone || "-"}`,
+    `Deskripsi: ${b.description || "-"}`,
   ].join("\n");
 }
 
-export function waLink(b: WaBooking): string {
-  return `https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(buildWaMessage(b))}`;
+export function waLink(
+  b: WaBooking,
+): string {
+  return `https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(
+    buildWaMessage(b),
+  )}`;
 }
 
-export type WaItem = { productName: string; qty: number; unit: string; subtotal: string };
+export type WaItem = {
+  productName: string;
+  qty: number;
+  unit: string;
+  subtotal: string;
+};
 
 export type WaOrder = {
   code: string;
@@ -50,15 +70,21 @@ export type WaOrder = {
   total: string;
   name: string;
   phone: string;
+  description: string;
 };
 
-export function buildWaOrderMessage(o: WaOrder): string {
+export function buildWaOrderMessage(
+  o: WaOrder,
+): string {
   return [
     "Halo Rasukan Ndayak, saya ingin konfirmasi booking:",
     "",
     `Kode: ${o.code}`,
     "Item yang disewa:",
-    ...o.items.map((it, i) => `${i + 1}. ${it.productName} — ${it.qty} ${it.unit} (${it.subtotal})`),
+    ...o.items.map(
+      (it, i) =>
+        `${i + 1}. ${it.productName} — ${it.qty} ${it.unit} (${it.subtotal})`,
+    ),
     "",
     `Tanggal keluar: ${tgl(o.start)}`,
     `Tanggal masuk: ${tgl(o.end)}`,
@@ -67,9 +93,14 @@ export function buildWaOrderMessage(o: WaOrder): string {
     "",
     `Nama: ${o.name || "-"}`,
     `WhatsApp: ${o.phone || "-"}`,
+    `Deskripsi: ${o.description || "-"}`,
   ].join("\n");
 }
 
-export function waOrderLink(o: WaOrder): string {
-  return `https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(buildWaOrderMessage(o))}`;
+export function waOrderLink(
+  o: WaOrder,
+): string {
+  return `https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(
+    buildWaOrderMessage(o),
+  )}`;
 }

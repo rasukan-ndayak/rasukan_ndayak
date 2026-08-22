@@ -1,0 +1,4 @@
+project_id = "vipocdgagmcjfghpfceh"
+
+[functions.rental-reminder]
+verify_jwt = false
