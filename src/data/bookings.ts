@@ -145,25 +145,25 @@ export async function loadBookings(): Promise<
         ...r,
         id: r.id,
         booking_id: r.booking_id,
-        code: b.code ?? "",
+        code: b["code"] ?? "",
         product_id: r.product_id,
         start_date:
-          b.start_date ?? "",
+          b["start_date"] ?? "",
         end_date:
-          b.end_date ?? "",
+          b["end_date"] ?? "",
         status:
-          b.status ??
+          b["status"] ??
           "confirmed",
         created_at:
-          b.created_at ?? "",
+          b["created_at"] ?? "",
         name:
-          b.customers?.name ??
+          b["customers"]?.name ??
           "",
         phone:
-          b.customers?.phone ??
+          b["customers"]?.phone ??
           "",
         description:
-          b.customers?.description ??
+          b["customers"]?.description ??
           "",
       });
     })
@@ -464,6 +464,50 @@ export async function updateBooking(
         }
       }
     }
+  }
+}
+
+export async function addBookingItem(
+  bookingId: string,
+  productId: string,
+  qty: number,
+  start?: string,
+  end?: string,
+) {
+  if (!supabaseConfigured) {
+    throw new Error("Supabase belum dikonfigurasi.");
+  }
+
+  const product = products.find((p) => p.id === productId);
+
+  if (!product) {
+    throw new Error("Produk tidak ditemukan.");
+  }
+
+  const safeQty = Math.max(1, Math.floor(Number(qty)));
+
+  await insertRows("booking_items", [
+    {
+      booking_id: bookingId,
+      product_id: productId,
+      qty: safeQty,
+      price_at_booking: product.price,
+    },
+  ]);
+
+  if (start !== undefined || end !== undefined) {
+    const bookingPatch: Record<string, string> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (start !== undefined) bookingPatch["start_date"] = start;
+    if (end !== undefined) bookingPatch["end_date"] = end;
+
+    await updateRows(
+      "bookings",
+      `id=eq.${encodeURIComponent(bookingId)}`,
+      bookingPatch,
+    );
   }
 }
 
