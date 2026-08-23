@@ -123,32 +123,6 @@ function Jadwal() {
     return Array.from(groups.values());
   }, [selectedBookings]);
 
-  const selectedCollectionDetails = useMemo(() => {
-    const details = new Map<string, { name: string; total: number; out: number }>();
-
-    for (const booking of selectedBookings) {
-      const product = getProduct(booking.productId);
-      if (!product) continue;
-
-      const existing = details.get(booking.productId);
-      if (existing) {
-        existing.out += booking.qty;
-      } else {
-        details.set(booking.productId, {
-          name: product.name,
-          total: product.stock,
-          out: booking.qty,
-        });
-      }
-    }
-
-    return Array.from(details.entries()).map(([productId, detail]) => ({
-      productId,
-      ...detail,
-      remaining: Math.max(detail.total - detail.out, 0),
-    }));
-  }, [selectedBookings, products]);
-
   const baseSelectedInfo = dayStatusFor(bookings, selected, filterId);
   const selectedInfo = isSelectedPast
     ? { status: "Kosong" as DayStatus, out: 0, capacity: baseSelectedInfo.capacity }
@@ -277,51 +251,7 @@ function Jadwal() {
           </div>
 
           <div className="surface-card p-6">
-            <h3 className="text-lg">1. Rincian Koleksi</h3>
-            {selectedCollectionDetails.length === 0 ? (
-              <p className="mt-3 text-sm text-muted-foreground">
-                Belum ada koleksi yang keluar pada tanggal ini.
-              </p>
-            ) : (
-              <div className="mt-4 overflow-x-auto rounded-xl border border-border">
-                <table className="w-full text-sm">
-                  <thead className="bg-secondary/60">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                        Koleksi
-                      </th>
-                      <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                        Total
-                      </th>
-                      <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                        Keluar
-                      </th>
-                      <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                        Sisa
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedCollectionDetails.map((item) => (
-                      <tr key={item.productId} className="border-t border-border">
-                        <td className="px-4 py-3 font-medium">{item.name}</td>
-                        <td className="px-4 py-3 text-right">{item.total} unit</td>
-                        <td className="px-4 py-3 text-right font-semibold text-primary">
-                          {item.out} unit
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold">
-                          {item.remaining} unit
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="surface-card p-6">
-            <h3 className="text-lg">2. Booking pada tanggal ini</h3>
+            <h3 className="text-lg">Booking pada tanggal ini</h3>
             {selectedBookings.length === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">
                 Belum ada barang keluar. Tanggal ini kosong dan bisa dipesan.
