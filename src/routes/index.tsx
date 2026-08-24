@@ -700,7 +700,7 @@ function Index() {
                 </h3>
 
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Foto akan disimpan di Cloudinary dan datanya di Supabase.
+                  Simpan Kenanganmu disini
                 </p>
               </div>
 
@@ -732,7 +732,7 @@ function Index() {
                         e.target.value,
                       )
                     }
-                    placeholder="Contoh: Nama Sanggar"
+                    placeholder="Contoh: Cinze Art_production"
                     className="mt-2 flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
@@ -749,7 +749,7 @@ function Index() {
                         e.target.value,
                       )
                     }
-                    placeholder="Contoh: Jiwo Kawedar"
+                    placeholder="Contoh: Rasukan Ndayak"
                     className="mt-2 flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
