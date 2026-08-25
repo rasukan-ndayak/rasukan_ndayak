@@ -1,4 +1,14 @@
-import { CalendarRange, FolderPlus, ImageUp, Loader2, Pencil, Plus, Trash2, Wrench } from "lucide-react";
+﻿import {
+  CalendarRange,
+  Camera,
+  FolderPlus,
+  ImageUp,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+  Wrench,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,9 +33,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+
 import { optimizeImage } from "@/lib/image-upload";
 import { useMaintenance } from "@/data/maintenance";
 import { uploadToCloudinary } from "@/lib/cloudinary";
+
 import {
   addProductRemote,
   categories,
@@ -47,6 +59,15 @@ type Draft = {
   image: string;
   description: string;
   details: string;
+};
+
+type BulkDraft = {
+  file: File;
+  preview: string;
+  name: string;
+  price: string;
+  stock: string;
+  description: string;
 };
 
 const emptyDraft = (category: Category = "Kostum"): Draft => ({
@@ -80,106 +101,121 @@ export function AdminProducts({
 }) {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [activeCat, setActiveCat] = useState<Category>(categories[0]!);
-  const [draft, setDraft] = useState<Draft>(() => emptyDraft(categories[0]!));
+
+  const [activeCat, setActiveCat] = useState<Category>(
+    categories[0]!,
+  );
+
+  const [draft, setDraft] = useState<Draft>(() =>
+    emptyDraft(categories[0]!),
+  );
+
   const [error, setError] = useState<string | null>(null);
+
   const [uploading, setUploading] = useState(false);
-  const { maintenance, add: addMaintenance, remove: removeMaintenance } = useMaintenance();
-  const [maintenanceProduct, setMaintenanceProduct] = useState<Product | null>(null);
+
+  const [cameraLoading, setCameraLoading] = useState(false);
+
+  const {
+    maintenance,
+    add: addMaintenance,
+    remove: removeMaintenance,
+  } = useMaintenance();
+
+  const [maintenanceProduct, setMaintenanceProduct] =
+    useState<Product | null>(null);
+
   const [maintenanceStart, setMaintenanceStart] = useState("");
   const [maintenanceEnd, setMaintenanceEnd] = useState("");
   const [maintenanceNote, setMaintenanceNote] = useState("");
   const [maintenanceSaving, setMaintenanceSaving] = useState(false);
-  
+
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkDrafts, setBulkDrafts] = useState<Array<{ file: File; preview: string; name: string; price: string; stock: string; description: string }>>([]);
+
+  const [bulkDrafts, setBulkDrafts] = useState<BulkDraft[]>([]);
+
   const fileRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const rowFileRef = useRef<HTMLInputElement>(null);
+
   const rowTargetRef = useRef<Product | null>(null);
 
-  const handleBulkFiles = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const selected = Array.from(files).filter((file) => file.type.startsWith("image/"));
-    if (!selected.length) {
-      toast.error("Folder tidak berisi file gambar yang didukung.");
-      return;
-    }
-    setBulkDrafts(selected.map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-      name: file.name.replace(/\.[^/.]+$/, "").replace(/[-_]+/g, " ").trim(),
-      price: "",
-      stock: "",
-      description: "",
-    })));
-    setBulkOpen(true);
-  };
-
-  const submitBulk = async () => {
-    if (!bulkDrafts.length) return;
-    setBulkLoading(true);
-    try {
-      let added = 0;
-      for (const item of bulkDrafts) {
-        const name = item.name.trim();
-        const price = Number(item.price);
-        const stock = Number(item.stock);
-        if (name.length < 2 || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0) {
-          toast.error(`Lengkapi nama, harga, dan stok untuk ${item.file.name}.`);
-          continue;
-        }
-        const image = await uploadToCloudinary(await optimizeImage(item.file));
-        await addProductRemote({
-          name, category: activeCat, unit: activeCat === "Kostum" ? "stell" : "pcs",
-          price, stock, image, description: item.description.trim().slice(0, 600), details: [], id: "",
-        });
-        added += 1;
-      }
-      if (added) {
-        toast.success(`${added} produk berhasil ditambahkan ke kategori ${activeCat}.`);
-        setBulkDrafts([]);
-        setBulkOpen(false);
-        refresh();
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menambahkan produk dari folder.");
-    } finally {
-      setBulkLoading(false);
-    }
-  };
-
-
-  const handleDraftFile = async (file: File | undefined) => {
+  /**
+   * ============================
+   * UPLOAD FILE FORM PRODUK
+   * ============================
+   */
+  const handleDraftFile = async (
+    file: File | undefined,
+  ) => {
     if (!file) return;
+
     setUploading(true);
+    setError(null);
+
     try {
-      const image = await uploadToCloudinary(await optimizeImage(file));
-      setDraft((d) => ({ ...d, image }));
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal memproses gambar.");
+      const optimized = await optimizeImage(file);
+      const image = await uploadToCloudinary(optimized);
+
+      setDraft((current) => ({
+        ...current,
+        image,
+      }));
+
+      toast.success("Foto berhasil diunggah.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal memproses gambar.";
+
+      setError(message);
+      toast.error(message);
     } finally {
       setUploading(false);
     }
   };
 
-  const handleRowFile = async (file: File | undefined) => {
+  /**
+   * ============================
+   * UPLOAD FILE BARIS PRODUK
+   * ============================
+   */
+  const handleRowFile = async (
+    file: File | undefined,
+  ) => {
     const target = rowTargetRef.current;
+
     if (!file || !target) return;
+
     try {
-      const image = await uploadToCloudinary(await optimizeImage(file));
-      await updateProductRemote(target.id, { image });
+      const optimized = await optimizeImage(file);
+      const image = await uploadToCloudinary(optimized);
+
+      await updateProductRemote(target.id, {
+        image,
+      });
+
       refresh();
-      toast.success(`Foto ${target.name} diperbarui`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal memproses gambar.");
+
+      toast.success(`Foto ${target.name} diperbarui.`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Gagal memproses gambar.",
+      );
     } finally {
       rowTargetRef.current = null;
     }
   };
 
+  /**
+   * ============================
+   * TAMBAH PRODUK
+   * ============================
+   */
   const startCreate = () => {
     setEditingId(null);
     setDraft(emptyDraft(activeCat));
@@ -187,15 +223,25 @@ export function AdminProducts({
     setOpen(true);
   };
 
-  const startEdit = (p: Product) => {
-    setEditingId(p.id);
-    setDraft(toDraft(p));
+  /**
+   * ============================
+   * EDIT PRODUK
+   * ============================
+   */
+  const startEdit = (product: Product) => {
+    setEditingId(product.id);
+    setDraft(toDraft(product));
     setError(null);
     setOpen(true);
   };
 
-  const openMaintenance = (p: Product) => {
-    setMaintenanceProduct(p);
+  /**
+   * ============================
+   * MAINTENANCE
+   * ============================
+   */
+  const openMaintenance = (product: Product) => {
+    setMaintenanceProduct(product);
     setMaintenanceStart("");
     setMaintenanceEnd("");
     setMaintenanceNote("");
@@ -203,16 +249,23 @@ export function AdminProducts({
 
   const submitMaintenance = async () => {
     if (!maintenanceProduct) return;
+
     if (!maintenanceStart || !maintenanceEnd) {
-      toast.error("Tanggal mulai dan tanggal selesai wajib diisi.");
+      toast.error(
+        "Tanggal mulai dan tanggal selesai wajib diisi.",
+      );
       return;
     }
+
     if (maintenanceEnd < maintenanceStart) {
-      toast.error("Tanggal selesai tidak boleh sebelum tanggal mulai.");
+      toast.error(
+        "Tanggal selesai tidak boleh sebelum tanggal mulai.",
+      );
       return;
     }
 
     setMaintenanceSaving(true);
+
     try {
       await addMaintenance({
         productId: maintenanceProduct.id,
@@ -220,33 +273,171 @@ export function AdminProducts({
         endDate: maintenanceEnd,
         note: maintenanceNote.trim(),
       });
-      toast.success(`${maintenanceProduct.name} ditandai dalam masa perawatan.`);
+
+      toast.success(
+        `${maintenanceProduct.name} ditandai dalam masa perawatan.`,
+      );
+
       setMaintenanceStart("");
       setMaintenanceEnd("");
       setMaintenanceNote("");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan jadwal perawatan.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Gagal menyimpan jadwal perawatan.",
+      );
     } finally {
       setMaintenanceSaving(false);
     }
   };
 
+  /**
+   * ============================
+   * BULK / FOLDER
+   * ============================
+   */
+  const handleBulkFiles = (
+    files: FileList | null,
+  ) => {
+    if (!files || files.length === 0) return;
+
+    const selected = Array.from(files).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+
+    if (!selected.length) {
+      toast.error(
+        "Folder tidak berisi file gambar yang didukung.",
+      );
+      return;
+    }
+
+    setBulkDrafts(
+      selected.map((file) => ({
+        file,
+        preview: URL.createObjectURL(file),
+        name: file.name
+          .replace(/\.[^/.]+$/, "")
+          .replace(/[-_]+/g, " ")
+          .trim(),
+        price: "",
+        stock: "",
+        description: "",
+      })),
+    );
+
+    setBulkOpen(true);
+  };
+
+  const submitBulk = async () => {
+    if (!bulkDrafts.length) return;
+
+    setBulkLoading(true);
+
+    try {
+      let added = 0;
+
+      for (const item of bulkDrafts) {
+        const name = item.name.trim();
+        const price = Number(item.price);
+        const stock = Number(item.stock);
+
+        if (
+          name.length < 2 ||
+          !Number.isFinite(price) ||
+          price < 0 ||
+          !Number.isInteger(stock) ||
+          stock < 0
+        ) {
+          toast.error(
+            `Lengkapi nama, harga, dan stok untuk ${item.file.name}.`,
+          );
+          continue;
+        }
+
+        const optimized = await optimizeImage(item.file);
+        const image = await uploadToCloudinary(optimized);
+
+        await addProductRemote({
+          name,
+          category: activeCat,
+          unit:
+            activeCat === "Kostum"
+              ? "stell"
+              : "pcs",
+          price,
+          stock,
+          image,
+          description: item.description
+            .trim()
+            .slice(0, 600),
+          details: [],
+          id: "",
+        });
+
+        added += 1;
+      }
+
+      if (added) {
+        toast.success(
+          `${added} produk berhasil ditambahkan ke kategori ${activeCat}.`,
+        );
+
+        setBulkDrafts([]);
+        setBulkOpen(false);
+        refresh();
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Gagal menambahkan produk dari folder.",
+      );
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  /**
+   * ============================
+   * SIMPAN PRODUK
+   * ============================
+   */
   const submit = async () => {
     const name = draft.name.trim();
     const price = Number(draft.price);
     const stock = Number(draft.stock);
+
     if (name.length < 2 || name.length > 80) {
-      setError("Nama produk wajib diisi (2–80 karakter).");
+      setError(
+        "Nama produk wajib diisi (2â€“80 karakter).",
+      );
       return;
     }
-    if (!Number.isFinite(price) || price < 0 || price > 100_000_000) {
-      setError("Harga sewa harus angka yang wajar.");
+
+    if (
+      !Number.isFinite(price) ||
+      price < 0 ||
+      price > 100_000_000
+    ) {
+      setError(
+        "Harga sewa harus angka yang wajar.",
+      );
       return;
     }
-    if (!Number.isInteger(stock) || stock < 0 || stock > 10_000) {
-      setError("Stok harus bilangan bulat 0–10.000.");
+
+    if (
+      !Number.isInteger(stock) ||
+      stock < 0 ||
+      stock > 10_000
+    ) {
+      setError(
+        "Stok harus bilangan bulat 0â€“10.000.",
+      );
       return;
     }
+
     const payload = {
       name,
       category: draft.category,
@@ -254,171 +445,293 @@ export function AdminProducts({
       price,
       stock,
       image: draft.image.trim(),
-      description: draft.description.trim().slice(0, 600),
+      description: draft.description
+        .trim()
+        .slice(0, 600),
       details: draft.details
         .split("\n")
-        .map((d) => d.trim())
+        .map((detail) => detail.trim())
         .filter(Boolean)
         .slice(0, 10),
     };
 
     try {
       if (editingId) {
-        await updateProductRemote(editingId, payload as Partial<Product>);
-        toast.success(`${name} diperbarui`);
+        await updateProductRemote(
+          editingId,
+          payload as Partial<Product>,
+        );
+
+        toast.success(
+          `${name} diperbarui.`,
+        );
       } else {
-        await addProductRemote(payload as Product);
-        toast.success(`${name} ditambahkan ke katalog`);
+        await addProductRemote(
+          payload as Product,
+        );
+
+        toast.success(
+          `${name} ditambahkan ke katalog.`,
+        );
       }
+
       refresh();
       setOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal menyimpan produk.");
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan produk.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal menyimpan produk.";
+
+      setError(message);
+      toast.error(message);
     }
   };
 
-  const visible = products.filter((p) => p.category === activeCat);
+  const visible = products.filter(
+    (product) =>
+      product.category === activeCat,
+  );
 
   return (
     <div className="surface-card overflow-hidden">
+      {/* HEADER */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
         <div>
-          <h2 className="text-lg">Kelola Produk — {activeCat}</h2>
+          <h2 className="text-lg">
+            Kelola Produk â€” {activeCat}
+          </h2>
+
           <p className="text-sm text-muted-foreground">
-            {visible.length} koleksi {activeCat.toLowerCase()} · {products.length} total di katalog
+            {visible.length} koleksi{" "}
+            {activeCat.toLowerCase()} Â·{" "}
+            {products.length} total di katalog
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button className="rounded-full" onClick={startCreate}>
-            <Plus className="mr-2 h-4 w-4" /> Tambah {activeCat}
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            className="rounded-full"
+            onClick={startCreate}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Tambah {activeCat}
           </Button>
+
           <Button
             variant="outline"
             className="rounded-full"
             disabled={bulkLoading}
-            onClick={() => bulkFileRef.current?.click()}
+            onClick={() =>
+              bulkFileRef.current?.click()
+            }
           >
-            <FolderPlus className="mr-2 h-4 w-4" /> Tambah Folder
+            <FolderPlus className="mr-2 h-4 w-4" />
+            Tambah Folder
           </Button>
+
           <input
             ref={bulkFileRef}
             type="file"
             accept="image/*"
             multiple
             className="hidden"
-            {...({ webkitdirectory: "", directory: "" } as any)}
-            onChange={(e) => { handleBulkFiles(e.target.files); e.target.value = ""; }}
+            {...({
+              webkitdirectory: "",
+              directory: "",
+            } as any)}
+            onChange={(event) => {
+              handleBulkFiles(
+                event.target.files,
+              );
+              event.target.value = "";
+            }}
           />
         </div>
       </div>
 
-
-
-
+      {/* CATEGORY */}
       <div className="flex gap-2 overflow-x-auto border-b border-border px-5 py-3">
-        {categories.map((c) => {
-          const count = products.filter((p) => p.category === c).length;
+        {categories.map((category) => {
+          const count = products.filter(
+            (product) =>
+              product.category === category,
+          ).length;
+
           return (
             <button
-              key={c}
+              key={category}
               type="button"
-              onClick={() => setActiveCat(c)}
+              onClick={() =>
+                setActiveCat(category)
+              }
               className={
-                activeCat === c
+                activeCat === category
                   ? "shrink-0 rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground"
                   : "shrink-0 rounded-full border border-border px-4 py-1.5 text-xs text-muted-foreground hover:bg-secondary"
               }
             >
-              {c} ({count})
+              {category} ({count})
             </button>
           );
         })}
       </div>
 
+      {/* TABLE */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="px-5 py-3">Produk</th>
-              <th className="px-5 py-3">Kategori</th>
-              <th className="px-5 py-3">Harga</th>
-              <th className="px-5 py-3">Stok</th>
-              <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3 text-right">Aksi</th>
+              <th className="px-5 py-3">
+                Produk
+              </th>
+
+              <th className="px-5 py-3">
+                Kategori
+              </th>
+
+              <th className="px-5 py-3">
+                Harga
+              </th>
+
+              <th className="px-5 py-3">
+                Stok
+              </th>
+
+              <th className="px-5 py-3">
+                Status
+              </th>
+
+              <th className="px-5 py-3 text-right">
+                Aksi
+              </th>
             </tr>
           </thead>
+
           <tbody>
             {visible.length === 0 ? (
               <tr className="border-t border-border">
-                <td colSpan={6} className="px-5 py-10 text-center text-sm text-muted-foreground">
-                  Belum ada produk pada kategori {activeCat}.
+                <td
+                  colSpan={6}
+                  className="px-5 py-10 text-center text-sm text-muted-foreground"
+                >
+                  Belum ada produk pada
+                  kategori {activeCat}.
                 </td>
               </tr>
             ) : null}
-            {visible.map((p) => (
-              <tr key={p.id} className="border-t border-border">
+
+            {visible.map((product) => (
+              <tr
+                key={product.id}
+                className="border-t border-border"
+              >
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-3">
                     <ProductImage
-                      src={p.image}
-                      alt={p.name}
+                      src={product.image}
+                      alt={product.name}
                       className="h-10 w-10 shrink-0 rounded-lg"
                     />
-                    <span className="font-medium">{p.name}</span>
+
+                    <span className="font-medium">
+                      {product.name}
+                    </span>
                   </div>
                 </td>
-                <td className="px-5 py-3 text-muted-foreground">{p.category}</td>
-                <td className="px-5 py-3">
-                  {formatIDR(p.price)} / {p.unit}
+
+                <td className="px-5 py-3 text-muted-foreground">
+                  {product.category}
                 </td>
+
                 <td className="px-5 py-3">
-                  {p.stock} {p.unit}
+                  {formatIDR(product.price)} /{" "}
+                  {product.unit}
                 </td>
+
                 <td className="px-5 py-3">
-                  <StatusBadge status={statusOf(p.stock)} />
+                  {product.stock}{" "}
+                  {product.unit}
                 </td>
+
+                <td className="px-5 py-3">
+                  <StatusBadge
+                    status={statusOf(
+                      product.stock,
+                    )}
+                  />
+                </td>
+
                 <td className="px-5 py-3">
                   <div className="flex justify-end gap-2">
+
+                    {/* FILE / GALERI */}
                     <Button
                       size="icon"
                       variant="outline"
                       className="rounded-full"
-                      aria-label={`Ganti foto ${p.name}`}
+                      aria-label={`Pilih foto ${product.name}`}
                       onClick={() => {
-                        rowTargetRef.current = p;
+                        rowTargetRef.current =
+                          product;
                         rowFileRef.current?.click();
                       }}
                     >
                       <ImageUp className="h-4 w-4" />
                     </Button>
+
+                    {/* MAINTENANCE */}
                     <Button
                       size="icon"
                       variant="outline"
                       className="rounded-full"
-                      aria-label={`Atur perawatan ${p.name}`}
-                      onClick={() => openMaintenance(p)}
+                      aria-label={`Atur perawatan ${product.name}`}
+                      onClick={() =>
+                        openMaintenance(
+                          product,
+                        )
+                      }
                     >
                       <Wrench className="h-4 w-4" />
                     </Button>
+
+                    {/* EDIT */}
                     <Button
                       size="icon"
                       variant="outline"
                       className="rounded-full"
-                      aria-label={`Ubah ${p.name}`}
-                      onClick={() => startEdit(p)}
+                      aria-label={`Ubah ${product.name}`}
+                      onClick={() =>
+                        startEdit(product)
+                      }
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
+
+                    {/* DELETE */}
                     <Button
                       size="icon"
                       variant="outline"
                       className="rounded-full text-destructive"
-                      aria-label={`Hapus ${p.name}`}
+                      aria-label={`Hapus ${product.name}`}
                       onClick={() => {
-                        void removeProductRemote(p.id)
-                          .then(() => { refresh(); toast.success(`${p.name} dihapus dari katalog`); })
-                          .catch((e) => toast.error(e instanceof Error ? e.message : "Gagal menghapus produk"));
+                        void removeProductRemote(
+                          product.id,
+                        )
+                          .then(() => {
+                            refresh();
+
+                            toast.success(
+                              `${product.name} dihapus dari katalog.`,
+                            );
+                          })
+                          .catch((error) =>
+                            toast.error(
+                              error instanceof Error
+                                ? error.message
+                                : "Gagal menghapus produk.",
+                            ),
+                          );
                       }}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -431,73 +744,120 @@ export function AdminProducts({
         </table>
       </div>
 
+      {/* HIDDEN ROW FILE */}
       <input
         ref={rowFileRef}
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={(e) => {
-          void handleRowFile(e.target.files?.[0]);
-          e.target.value = "";
+        onChange={(event) => {
+          void handleRowFile(
+            event.target.files?.[0],
+          );
+
+          event.target.value = "";
         }}
       />
 
+      {/* ============================
+          MAINTENANCE DIALOG
+          ============================ */}
       <Dialog
         open={Boolean(maintenanceProduct)}
-        onOpenChange={(open) => {
-          if (!open) setMaintenanceProduct(null);
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setMaintenanceProduct(null);
+          }
         }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Jadwal Perawatan — {maintenanceProduct?.name}</DialogTitle>
+            <DialogTitle>
+              Jadwal Perawatan â€”{" "}
+              {maintenanceProduct?.name}
+            </DialogTitle>
+
             <DialogDescription>
-              Pada tanggal perawatan, koleksi ini otomatis tidak dapat dibooking.
+              Pada tanggal perawatan,
+              koleksi ini otomatis tidak
+              dapat dibooking.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm">
-              <p className="font-semibold">Cara kerja</p>
+              <p className="font-semibold">
+                Cara kerja
+              </p>
+
               <p className="mt-1 text-muted-foreground">
-                Contoh 30–31: koleksi diblokir untuk booking pada periode tersebut. Sistem juga
-                menolak booking di server agar tidak bisa ditembus dari halaman lain.
+                Contoh 30â€“31: koleksi
+                diblokir untuk booking pada
+                periode tersebut. Sistem juga
+                menolak booking di server agar
+                tidak bisa ditembus dari
+                halaman lain.
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="maintenance-start">Tanggal mulai</Label>
+                <Label htmlFor="maintenance-start">
+                  Tanggal mulai
+                </Label>
+
                 <Input
                   id="maintenance-start"
                   type="date"
                   value={maintenanceStart}
-                  onChange={(e) => setMaintenanceStart(e.target.value)}
+                  onChange={(event) =>
+                    setMaintenanceStart(
+                      event.target.value,
+                    )
+                  }
                   className="rounded-xl"
                 />
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="maintenance-end">Tanggal selesai</Label>
+                <Label htmlFor="maintenance-end">
+                  Tanggal selesai
+                </Label>
+
                 <Input
                   id="maintenance-end"
                   type="date"
-                  min={maintenanceStart || undefined}
+                  min={
+                    maintenanceStart ||
+                    undefined
+                  }
                   value={maintenanceEnd}
-                  onChange={(e) => setMaintenanceEnd(e.target.value)}
+                  onChange={(event) =>
+                    setMaintenanceEnd(
+                      event.target.value,
+                    )
+                  }
                   className="rounded-xl"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="maintenance-note">Keterangan (opsional)</Label>
+              <Label htmlFor="maintenance-note">
+                Keterangan (opsional)
+              </Label>
+
               <Textarea
                 id="maintenance-note"
                 rows={2}
                 maxLength={200}
                 placeholder="Contoh: cuci, reparasi, cek kelengkapan"
                 value={maintenanceNote}
-                onChange={(e) => setMaintenanceNote(e.target.value)}
+                onChange={(event) =>
+                  setMaintenanceNote(
+                    event.target.value,
+                  )
+                }
                 className="rounded-xl"
               />
             </div>
@@ -505,32 +865,71 @@ export function AdminProducts({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <CalendarRange className="h-4 w-4" />
-                <p className="font-semibold">Jadwal perawatan tersimpan</p>
+
+                <p className="font-semibold">
+                  Jadwal perawatan tersimpan
+                </p>
               </div>
 
-              {maintenanceProduct && maintenance.filter((m) => m.productId === maintenanceProduct.id).length === 0 ? (
+              {maintenanceProduct &&
+              maintenance.filter(
+                (item) =>
+                  item.productId ===
+                  maintenanceProduct.id,
+              ).length === 0 ? (
                 <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  Belum ada jadwal perawatan.
+                  Belum ada jadwal
+                  perawatan.
                 </p>
               ) : (
                 <div className="space-y-2">
                   {maintenance
-                    .filter((m) => m.productId === maintenanceProduct?.id)
-                    .map((m) => (
-                      <div key={m.id} className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
+                    .filter(
+                      (item) =>
+                        item.productId ===
+                        maintenanceProduct?.id,
+                    )
+                    .map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-border p-3"
+                      >
                         <div className="min-w-0">
-                          <p className="font-medium">{m.startDate} → {m.endDate}</p>
-                          {m.note ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{m.note}</p> : null}
+                          <p className="font-medium">
+                            {item.startDate} â†’{" "}
+                            {item.endDate}
+                          </p>
+
+                          {item.note ? (
+                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                              {item.note}
+                            </p>
+                          ) : null}
                         </div>
+
                         <Button
                           type="button"
                           size="sm"
                           variant="outline"
                           className="shrink-0 rounded-full text-destructive"
                           onClick={() => {
-                            void removeMaintenance(m.id)
-                              .then(() => toast.success("Jadwal perawatan dihapus."))
-                              .catch((e) => toast.error(e instanceof Error ? e.message : "Gagal menghapus jadwal."));
+                            void removeMaintenance(
+                              item.id,
+                            )
+                              .then(() =>
+                                toast.success(
+                                  "Jadwal perawatan dihapus.",
+                                ),
+                              )
+                              .catch(
+                                (error) =>
+                                  toast.error(
+                                    error instanceof
+                                      Error
+                                      ? error.message
+                                      : "Gagal menghapus jadwal.",
+                                  ),
+                              );
                           }}
                         >
                           Hapus
@@ -543,85 +942,273 @@ export function AdminProducts({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setMaintenanceProduct(null)}>
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={() =>
+                setMaintenanceProduct(null)
+              }
+            >
               Tutup
             </Button>
-            <Button className="rounded-full" disabled={maintenanceSaving} onClick={() => void submitMaintenance()}>
-              {maintenanceSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+
+            <Button
+              className="rounded-full"
+              disabled={maintenanceSaving}
+              onClick={() =>
+                void submitMaintenance()
+              }
+            >
+              {maintenanceSaving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+
               Simpan Perawatan
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+      {/* ============================
+          BULK FOLDER DIALOG
+          ============================ */}
+      <Dialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Tambah Produk dari Folder — {activeCat}</DialogTitle>
+            <DialogTitle>
+              Tambah Produk dari Folder â€”{" "}
+              {activeCat}
+            </DialogTitle>
+
             <DialogDescription>
-              Foto dari folder sudah dipilih. Lengkapi nama, harga, stok, dan deskripsi tiap produk sebelum disimpan.
+              Foto dari folder sudah dipilih.
+              Lengkapi nama, harga, stok,
+              dan deskripsi tiap produk
+              sebelum disimpan.
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-4">
-            {bulkDrafts.map((item, index) => (
-              <div key={`${item.file.name}-${index}`} className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-[80px_1fr_140px_110px]">
-                <ProductImage src={item.preview} alt={item.file.name} className="h-20 w-20 rounded-lg" />
-                <div className="space-y-2">
-                  <p className="truncate text-xs text-muted-foreground">{item.file.name}</p>
-                  <Input placeholder="Nama kostum/produk" value={item.name} onChange={(e) => setBulkDrafts((all) => all.map((x, i) => i === index ? { ...x, name: e.target.value } : x))} className="rounded-xl" />
-                  <Textarea placeholder="Deskripsi produk" rows={2} value={item.description} onChange={(e) => setBulkDrafts((all) => all.map((x, i) => i === index ? { ...x, description: e.target.value } : x))} className="rounded-xl" />
+            {bulkDrafts.map(
+              (item, index) => (
+                <div
+                  key={`${item.file.name}-${index}`}
+                  className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-[80px_1fr_140px_110px]"
+                >
+                  <ProductImage
+                    src={item.preview}
+                    alt={item.file.name}
+                    className="h-20 w-20 rounded-lg"
+                  />
+
+                  <div className="space-y-2">
+                    <p className="truncate text-xs text-muted-foreground">
+                      {item.file.name}
+                    </p>
+
+                    <Input
+                      placeholder="Nama kostum/produk"
+                      value={item.name}
+                      onChange={(event) =>
+                        setBulkDrafts(
+                          (all) =>
+                            all.map(
+                              (current, i) =>
+                                i === index
+                                  ? {
+                                      ...current,
+                                      name: event
+                                        .target
+                                        .value,
+                                    }
+                                  : current,
+                            ),
+                        )
+                      }
+                      className="rounded-xl"
+                    />
+
+                    <Textarea
+                      placeholder="Deskripsi produk"
+                      rows={2}
+                      value={item.description}
+                      onChange={(event) =>
+                        setBulkDrafts(
+                          (all) =>
+                            all.map(
+                              (current, i) =>
+                                i === index
+                                  ? {
+                                      ...current,
+                                      description:
+                                        event.target
+                                          .value,
+                                    }
+                                  : current,
+                            ),
+                        )
+                      }
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="Harga"
+                    value={item.price}
+                    onChange={(event) =>
+                      setBulkDrafts(
+                        (all) =>
+                          all.map(
+                            (current, i) =>
+                              i === index
+                                ? {
+                                    ...current,
+                                    price: event
+                                      .target
+                                      .value,
+                                  }
+                                : current,
+                          ),
+                      )
+                    }
+                    className="rounded-xl"
+                  />
+
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="Jumlah"
+                    value={item.stock}
+                    onChange={(event) =>
+                      setBulkDrafts(
+                        (all) =>
+                          all.map(
+                            (current, i) =>
+                              i === index
+                                ? {
+                                    ...current,
+                                    stock: event
+                                      .target
+                                      .value,
+                                  }
+                                : current,
+                          ),
+                      )
+                    }
+                    className="rounded-xl"
+                  />
                 </div>
-                <Input type="number" min={0} placeholder="Harga" value={item.price} onChange={(e) => setBulkDrafts((all) => all.map((x, i) => i === index ? { ...x, price: e.target.value } : x))} className="rounded-xl" />
-                <Input type="number" min={0} placeholder="Jumlah" value={item.stock} onChange={(e) => setBulkDrafts((all) => all.map((x, i) => i === index ? { ...x, stock: e.target.value } : x))} className="rounded-xl" />
-              </div>
-            ))}
+              ),
+            )}
           </div>
+
           <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setBulkOpen(false)}>Batal</Button>
-            <Button className="rounded-full" disabled={bulkLoading} onClick={() => void submitBulk()}>
-              {bulkLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Simpan {bulkDrafts.length} Produk
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={() =>
+                setBulkOpen(false)
+              }
+            >
+              Batal
+            </Button>
+
+            <Button
+              className="rounded-full"
+              disabled={bulkLoading}
+              onClick={() =>
+                void submitBulk()
+              }
+            >
+              {bulkLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+
+              Simpan {bulkDrafts.length}{" "}
+              Produk
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      {/* ============================
+          ADD / EDIT PRODUCT DIALOG
+          ============================ */}
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Ubah Produk" : "Tambah Produk"}</DialogTitle>
+            <DialogTitle>
+              {editingId
+                ? "Ubah Produk"
+                : "Tambah Produk"}
+            </DialogTitle>
+
             <DialogDescription>
-              Perubahan langsung tampil di katalog, halaman produk, dan booking.
+              Perubahan langsung tampil di
+              katalog, halaman produk, dan
+              booking.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* NAMA */}
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="p-nama">Nama Produk</Label>
+              <Label htmlFor="p-nama">
+                Nama Produk
+              </Label>
+
               <Input
                 id="p-nama"
                 maxLength={80}
                 value={draft.name}
-                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
                 className="rounded-xl"
               />
             </div>
+
+            {/* KATEGORI */}
             <div className="space-y-2">
               <Label>Kategori</Label>
+
               {editingId ? (
                 <Select
                   value={draft.category}
-                  onValueChange={(v) => setDraft((d) => ({ ...d, category: v as Category }))}
+                  onValueChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      category:
+                        value as Category,
+                    }))
+                  }
                 >
                   <SelectTrigger className="rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
+
                   <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
+                    {categories.map(
+                      (category) => (
+                        <SelectItem
+                          key={category}
+                          value={category}
+                        >
+                          {category}
+                        </SelectItem>
+                      ),
+                    )}
                   </SelectContent>
                 </Select>
               ) : (
@@ -630,120 +1217,238 @@ export function AdminProducts({
                 </div>
               )}
             </div>
+
+            {/* SATUAN */}
             <div className="space-y-2">
               <Label>Satuan</Label>
+
               <Select
                 value={draft.unit}
-                onValueChange={(v) => setDraft((d) => ({ ...d, unit: v as "pcs" | "stell" }))}
+                onValueChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    unit:
+                      value as
+                        | "pcs"
+                        | "stell",
+                  }))
+                }
               >
                 <SelectTrigger className="rounded-xl">
                   <SelectValue />
                 </SelectTrigger>
+
                 <SelectContent>
-                  <SelectItem value="pcs">pcs</SelectItem>
-                  <SelectItem value="stell">stell</SelectItem>
+                  <SelectItem value="pcs">
+                    pcs
+                  </SelectItem>
+
+                  <SelectItem value="stell">
+                    stell
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* HARGA */}
             <div className="space-y-2">
-              <Label htmlFor="p-harga">Harga Sewa (Rp)</Label>
+              <Label htmlFor="p-harga">
+                Harga Sewa (Rp)
+              </Label>
+
               <Input
                 id="p-harga"
                 type="number"
                 min={0}
                 value={draft.price}
-                onChange={(e) => setDraft((d) => ({ ...d, price: e.target.value }))}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    price:
+                      event.target.value,
+                  }))
+                }
                 className="rounded-xl"
               />
             </div>
+
+            {/* STOK */}
             <div className="space-y-2">
-              <Label htmlFor="p-stok">Stok</Label>
+              <Label htmlFor="p-stok">
+                Stok
+              </Label>
+
               <Input
                 id="p-stok"
                 type="number"
                 min={0}
                 value={draft.stock}
-                onChange={(e) => setDraft((d) => ({ ...d, stock: e.target.value }))}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    stock:
+                      event.target.value,
+                  }))
+                }
                 className="rounded-xl"
               />
             </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Gambar</Label>
+
+            {/* FOTO */}
+            <div className="space-y-3 sm:col-span-2">
+              <Label>Foto Produk</Label>
+
               <div className="flex flex-wrap items-center gap-3">
                 <ProductImage
                   src={draft.image}
                   alt="Pratinjau foto produk"
                   className="h-20 w-20 rounded-xl ring-1 ring-border"
                 />
+
+                {/* GALERI / FILE */}
                 <Button
                   type="button"
                   variant="outline"
                   className="rounded-full"
-                  disabled={uploading}
-                  onClick={() => fileRef.current?.click()}
+                  disabled={
+                    uploading ||
+                    cameraLoading
+                  }
+                  onClick={() =>
+                    fileRef.current?.click()
+                  }
                 >
                   {uploading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <ImageUp className="mr-2 h-4 w-4" />
                   )}
-                  Unggah Foto
+
+                  Pilih Foto
                 </Button>
+
                 <input
                   ref={fileRef}
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => {
-                    void handleDraftFile(e.target.files?.[0]);
-                    e.target.value = "";
+                  onChange={(event) => {
+                    void handleDraftFile(
+                      event.target.files?.[0],
+                    );
+
+                    event.target.value = "";
                   }}
                 />
-                <span className="text-xs text-muted-foreground">JPG/PNG/WebP, maks 6 MB</span>
+
+                <span className="text-xs text-muted-foreground">
+                  JPG/PNG/WebP, maks 6 MB
+                </span>
               </div>
+
               <Input
                 value={draft.image}
-                onChange={(e) => setDraft((d) => ({ ...d, image: e.target.value }))}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    image:
+                      event.target.value,
+                  }))
+                }
                 placeholder="URL Cloudinary akan terisi otomatis setelah upload"
                 className="rounded-xl"
               />
             </div>
+
+            {/* DESKRIPSI */}
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="p-desk">Deskripsi</Label>
+              <Label htmlFor="p-desk">
+                Deskripsi
+              </Label>
+
               <Textarea
                 id="p-desk"
                 rows={3}
                 maxLength={600}
                 value={draft.description}
-                onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    description:
+                      event.target.value,
+                  }))
+                }
                 className="rounded-xl"
               />
             </div>
+
+            {/* DETAIL */}
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="p-detail">Detail (satu poin per baris)</Label>
+              <Label htmlFor="p-detail">
+                Detail (satu poin per baris)
+              </Label>
+
               <Textarea
                 id="p-detail"
                 rows={3}
                 value={draft.details}
-                onChange={(e) => setDraft((d) => ({ ...d, details: e.target.value }))}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    details:
+                      event.target.value,
+                  }))
+                }
                 className="rounded-xl"
               />
             </div>
           </div>
 
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? (
+            <p className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
 
           <DialogFooter>
-            <Button variant="outline" className="rounded-full" onClick={() => setOpen(false)}>
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={() =>
+                setOpen(false)
+              }
+            >
               Batal
             </Button>
-            <Button className="rounded-full" onClick={() => void submit()}>
-              {editingId ? "Simpan Perubahan" : "Tambah Produk"}
+
+            <Button
+              className="rounded-full"
+              disabled={
+                uploading ||
+                cameraLoading
+              }
+              onClick={() =>
+                void submit()
+              }
+            >
+              {editingId
+                ? "Simpan Perubahan"
+                : "Tambah Produk"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
