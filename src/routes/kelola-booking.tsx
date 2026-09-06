@@ -263,7 +263,7 @@ function KelolaBooking() {
       <PageHeader
         eyebrow="Kelola Booking"
         title="Ubah atau Batalkan Booking"
-        description="Cari nama penyewa untuk mengubah jadwal, jumlah unit, atau status. Semua jam menggunakan format 24 jam WIB."
+        description="Cari nama penyewa untuk mengubah jadwal, jumlah unit, atau status."
       />
       <div className="mx-auto max-w-5xl px-5 py-12 lg:px-8">
         <form
