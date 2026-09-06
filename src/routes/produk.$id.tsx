@@ -3,6 +3,7 @@ import { ArrowLeft, Boxes, Check } from "lucide-react";
 
 import { ProductImage } from "@/components/product-image";
 import { ProductCard } from "@/components/product-card";
+import { ProductName } from "@/components/product-name";
 import { SiteLayout } from "@/components/site-layout";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -69,7 +70,9 @@ function ProductDetail() {
               </span>
               <StatusBadge status={status} />
             </div>
-            <h1 className="mt-4 text-4xl leading-tight">{product.name}</h1>
+            <h1 className="mt-4 text-4xl leading-tight">
+              <ProductName product={product} />
+            </h1>
             <p className="mt-4 leading-relaxed text-muted-foreground">{product.description}</p>
 
             <div className="mt-8 flex flex-wrap items-end gap-8 border-y border-border py-6">

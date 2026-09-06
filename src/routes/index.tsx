@@ -629,40 +629,6 @@ function Index() {
             <>
               {/* =================================================
                   MOBILE SLIDER
-                  ================================================= */}
-              <div
-                className="
-                  -mx-5 flex snap-x snap-mandatory
-                  gap-4 overflow-x-auto px-5 pb-4
-                  [scrollbar-width:none]
-                  [-ms-overflow-style:none]
-                  [&::-webkit-scrollbar]:hidden
-                  sm:hidden
-                "
-              >
-                {gallery.map((item, index) => {
-                  if (!item.image_url) {
-                    return null;
-                  }
-
-                  return (
-                    <article
-                      key={item.id}
-                      className="
-                          group relative aspect-[4/5]
-                          w-[82vw] max-w-[340px]
-                          shrink-0 snap-center
-                          overflow-hidden rounded-2xl
-                          bg-secondary shadow-sm
-                        "
-                    >
-                      <button
-                        type="button"
-                        onClick={() => openGallery(index)}
-                        className="absolute inset-0 z-10 h-full w-full cursor-zoom-in"
-                        aria-label={`Buka foto ${item.name}`}
-                      />
-
                       <img
                         src={item.image_url}
                         alt={`${item.name} - ${item.judul_atas || "Rasukan Ndayak"}`}
@@ -672,14 +638,12 @@ function Index() {
 
                       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/55" />
 
-                      {/* JUDUL MOBILE */}
                       <div className="pointer-events-none absolute left-1/2 top-4 w-[82%] -translate-x-1/2 rounded-xl border border-white/30 bg-black/20 px-3 py-2 text-center backdrop-blur-[2px]">
                         <p className="font-display text-base font-bold leading-tight text-white drop-shadow-md">
                           {item.judul_atas || "Rasukan Ndayak"}
                         </p>
                       </div>
 
-                      {/* NAMA MOBILE */}
                       <div className="pointer-events-none absolute bottom-16 left-4 max-w-[78%] text-white drop-shadow-lg">
                         <p className="font-display text-xl font-bold leading-tight">
                           {item.name || "Nama Penyewa"}
@@ -690,7 +654,6 @@ function Index() {
                         </p>
                       </div>
 
-                      {/* HAPUS */}
                       <button
                         type="button"
                         onClick={() => void handleDeleteGallery(item)}

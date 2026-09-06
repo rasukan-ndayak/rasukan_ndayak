@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { PageHeader, SiteLayout } from "@/components/site-layout";
 import { ProductImage } from "@/components/product-image";
+import { ProductName } from "@/components/product-name";
 import { Button } from "@/components/ui/button";
 import { bookingsByCode, formatWibDateTime, useBookings, wibTime } from "@/data/bookings";
 import { formatIDR, useCatalog } from "@/data/products";
@@ -263,7 +264,9 @@ function Konfirmasi() {
                     />
                   ) : null}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{item.name}</p>
+                    <p className="truncate font-medium">
+                      {item.product ? <ProductName product={item.product} /> : item.name}
+                    </p>
                     <p className="text-xs uppercase tracking-widest text-primary">
                       {item.product?.category}
                     </p>

@@ -4,6 +4,7 @@ import { ArrowRight, Boxes } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product-image";
+import { ProductName } from "@/components/product-name";
 import { formatIDR, statusOf, type Product } from "@/data/products";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -25,7 +26,9 @@ export function ProductCard({ product }: { product: Product }) {
 
       <div className="flex flex-1 flex-col gap-3 p-5">
         <p className="text-[11px] uppercase tracking-[0.22em] text-primary">{product.category}</p>
-        <h3 className="text-lg leading-snug">{product.name}</h3>
+        <h3 className="text-lg leading-snug">
+          <ProductName product={product} />
+        </h3>
         <div className="mt-auto flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-lg font-semibold text-foreground">{formatIDR(product.price)}</p>

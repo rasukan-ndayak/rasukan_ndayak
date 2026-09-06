@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { SiteLayout } from "@/components/site-layout";
 import { ProductImage } from "@/components/product-image";
+import { ProductName } from "@/components/product-name";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -911,7 +912,7 @@ function Booking() {
                             <SelectContent>
                               {row.visibleProducts.map((product) => (
                                 <SelectItem key={product.id} value={product.id}>
-                                  {product.name} · {product.category}
+                                  <ProductName product={product} /> · {product.category}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1223,7 +1224,9 @@ function Booking() {
                   />
 
                   <div className="flex-1">
-                    <p className="truncate font-medium">{row.product.name}</p>
+                    <p className="truncate font-medium">
+                      <ProductName product={row.product} />
+                    </p>
 
                     <p className="text-xs text-primary">{row.product.category}</p>
 
