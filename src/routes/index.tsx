@@ -626,8 +626,24 @@ function Index() {
             </div>
           ) : (
             <>
-              {/* =================================================
-                  MOBILE SLIDER
+              <div className="-mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-4 sm:hidden">
+                {gallery.map((item, index) => {
+                  if (!item.image_url) {
+                    return null;
+                  }
+
+                  return (
+                    <article
+                      key={item.id}
+                      className="group relative aspect-[4/5] w-[82vw] max-w-[340px] shrink-0 snap-center overflow-hidden rounded-2xl bg-secondary shadow-sm"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openGallery(index)}
+                        className="absolute inset-0 z-10 h-full w-full cursor-zoom-in"
+                        aria-label={`Buka foto ${item.name}`}
+                      />
+
                       <img
                         src={item.image_url}
                         alt={`${item.name} - ${item.judul_atas || "Rasukan Ndayak"}`}
@@ -670,7 +686,7 @@ function Index() {
               {/* =================================================
                   DESKTOP GRID
                   ================================================= */}
-              <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
+              <div className="hidden w-full gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
                 {gallery.map((item, index) => {
                   if (!item.image_url) {
                     return null;
