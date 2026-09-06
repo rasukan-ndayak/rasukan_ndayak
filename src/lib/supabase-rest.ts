@@ -15,7 +15,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${url}/rest/v1/${path}`, { ...init, headers });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Supabase request gagal (${response.status})`);
+    let message = text;
+    try {
+      const payload = JSON.parse(text) as { message?: string; details?: string; hint?: string };
+      message = [payload.message, payload.details, payload.hint].filter(Boolean).join(" ");
+    } catch {
+      // Keep the raw response when Supabase does not return JSON.
+    }
+    throw new Error(message || `Supabase request gagal (${response.status}) pada ${path}`);
   }
   const text = await response.text();
   return (text ? JSON.parse(text) : null) as T;

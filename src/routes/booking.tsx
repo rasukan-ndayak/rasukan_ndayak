@@ -309,6 +309,28 @@ function Booking() {
   const [performanceTime, setPerformanceTime] = useState("19:00");
   const [returnTime, setReturnTime] = useState("13:00");
 
+  const adjustReturnSchedule = (dateValue: string, timeValue: string) => {
+    if (!dateValue) return;
+    const hour = Number(timeValue.split(":")[0]);
+    if (!Number.isFinite(hour)) return;
+    const performanceDay = startOfDay(new Date(`${dateValue}T00:00:00`));
+    if (Number.isNaN(performanceDay.getTime())) return;
+
+    if (hour >= 18) {
+      setEnd((current) => {
+        const minimumReturn = addDays(performanceDay, 1);
+        return current && current >= minimumReturn ? current : minimumReturn;
+      });
+      setReturnTime("13:00");
+    } else {
+      setEnd((current) => {
+        const sameDayReturn = performanceDay >= (start ?? performanceDay) ? performanceDay : current;
+        return sameDayReturn;
+      });
+      setReturnTime("21:00");
+    }
+  };
+
   useEffect(() => {
     if (!start) return;
     const min = toKey(start);
@@ -740,7 +762,10 @@ function Booking() {
                 min={toKey(start ?? todayOnly)}
                 max={toKey(end ?? todayOnly)}
                 value={performanceDate}
-                onChange={(e) => setPerformanceDate(e.target.value)}
+                onChange={(e) => {
+                  setPerformanceDate(e.target.value);
+                  adjustReturnSchedule(e.target.value, performanceTime);
+                }}
                 className="mt-2 h-12 rounded-xl"
               />
             </div>
@@ -754,7 +779,11 @@ function Booking() {
                 pattern="[0-2][0-9]:[0-5][0-9]"
                 placeholder="HH:mm"
                 value={performanceTime}
-                onChange={(e) => setPerformanceTime(only24HourCharacters(e.target.value))}
+                onChange={(e) => {
+                  const value = only24HourCharacters(e.target.value);
+                  setPerformanceTime(value);
+                  if (/^\d{2}:\d{2}$/.test(value)) adjustReturnSchedule(performanceDate, value);
+                }}
                 className="mt-2 h-12 rounded-xl"
               />
             </div>
