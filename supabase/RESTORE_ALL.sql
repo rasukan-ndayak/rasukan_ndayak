@@ -13,6 +13,8 @@
 \ir migrations/003_product_maintenance.sql
 \ir migrations/004_booking_time_status_notifications.sql
 \ir migrations/005_product_fullset.sql
+\ir migrations/006_repair_create_booking_v2.sql
+\ir migrations/007_rename_booking_rpc.sql
 
 -- Verify the objects needed by the catalog and booking screens.
 select to_regclass('public.products') as products_table,

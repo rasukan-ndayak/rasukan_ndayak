@@ -150,7 +150,7 @@ export async function saveBookingGroup(
   items: { productId: string; qty: number }[],
 ) {
   if (!supabaseConfigured) throw new Error("Supabase belum dikonfigurasi.");
-  const result = await rpc<any>("create_booking_v2", {
+  const result = await rpc<any>("create_booking_v3", {
     p_name: common.name,
     p_phone: common.phone,
     p_description: common.description,
