@@ -17,10 +17,9 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { ProductCard } from "@/components/product-card";
 import { SiteLayout } from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
-import { categories, useCatalog } from "@/data/products";
+import { useCatalog } from "@/data/products";
 import { optimizeImage } from "@/lib/image-upload";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { insertRows, rpc } from "@/lib/supabase-rest";
@@ -857,76 +856,6 @@ function Index() {
           </div>
         </div>
       ) : null}
-
-      {/* =========================================================
-          KATEGORI KOLEKSI
-      ========================================================= */}
-      <section className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="text-3xl sm:text-4xl">Kategori Koleksi</h2>
-
-            <p className="mt-2 text-muted-foreground">Telusuri berdasarkan jenis perlengkapan.</p>
-          </div>
-        </div>
-
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {categories.map((c) => (
-            <Link
-              key={c}
-              to="/katalog"
-              search={{ kategori: c }}
-              className="surface-card group flex items-center justify-between p-6 transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-glow)]"
-            >
-              <span className="font-display text-xl">{c}</span>
-
-              <span className="text-sm text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                Lihat
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* =========================================================
-          PRODUK PER KATEGORI
-      ========================================================= */}
-      {categories.map((c) => {
-        const items = products.filter((p) => p.active && p.category === c);
-
-        if (items.length === 0) {
-          return null;
-        }
-
-        return (
-          <section key={c} className="mx-auto max-w-7xl px-5 pb-16 lg:px-8">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <h2 className="text-3xl sm:text-4xl">{c}</h2>
-
-                <p className="mt-2 text-muted-foreground">{items.length} koleksi tersedia.</p>
-              </div>
-
-              <Button asChild variant="ghost" className="rounded-full">
-                <Link
-                  to="/katalog"
-                  search={{
-                    kategori: c,
-                  }}
-                >
-                  Lihat semua {c}
-                </Link>
-              </Button>
-            </div>
-
-            <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {items.slice(0, 3).map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
-          </section>
-        );
-      })}
 
       {/* =========================================================
           CTA
