@@ -39,11 +39,9 @@ function statusLabel(status: string) {
 import { AdminGate } from "@/components/admin-gate";
 import { AdminAlert } from "@/components/admin-alert";
 import { AdminProducts } from "@/components/admin-products";
-import { ProductImage } from "@/components/product-image";
-import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { bookingsOn, toKey, totalOutOn, useBookings } from "@/data/bookings";
-import { formatIDR, statusOf, useCatalog } from "@/data/products";
+import { formatIDR, useCatalog } from "@/data/products";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
@@ -165,7 +163,7 @@ function Admin() {
     return sum + price * b.qty * days;
   }, 0);
 
-  const recent = [...bookings].slice(0, 6);
+  const recent = [...bookings].slice(0, 3);
 
   const totalStock = products.reduce((sum, p) => sum + p.stock, 0);
 
@@ -980,7 +978,7 @@ function Admin() {
                 ))}
               </section>
 
-              <section className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+              <section className="grid gap-6">
                 {/* BOOKING TERBARU */}
 
                 <div className="surface-card overflow-hidden">
@@ -1065,31 +1063,6 @@ function Admin() {
                   </div>
                 </div>
 
-                {/* STATUS STOK */}
-
-                <div className="surface-card p-5">
-                  <h2 className="text-lg">Status Stok</h2>
-
-                  <ul className="mt-4 space-y-4">
-                    {products.map((p) => (
-                      <li key={p.id} className="flex items-center gap-3">
-                        <ProductImage
-                          src={p.image}
-                          alt={p.name}
-                          className="h-12 w-12 shrink-0 rounded-xl"
-                        />
-
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{p.name}</p>
-
-                          <p className="text-xs text-muted-foreground">{p.stock} unit tersedia</p>
-                        </div>
-
-                        <StatusBadge status={statusOf(p.stock)} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
               </section>
             </>
           )}
