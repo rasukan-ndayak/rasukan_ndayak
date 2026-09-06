@@ -9,14 +9,15 @@ type KatalogSearch = { kategori?: string | undefined };
 
 export const Route = createFileRoute("/katalog")({
   validateSearch: (search: Record<string, unknown>): KatalogSearch => ({
-    kategori: typeof search["kategori"] === "string"? (search["kategori"] as string) : undefined,
+    kategori: typeof search["kategori"] === "string" ? (search["kategori"] as string) : undefined,
   }),
   head: () => ({
     meta: [
       { title: "Katalog Sewa — Rasukan Ndayak" },
       {
         name: "description",
-        content: "Jelajahi katalog sewa kostum tari, kuluk lancur, kuluk mentok, klinting, dan aksesoris lengkap.",
+        content:
+          "Jelajahi katalog sewa kostum tari, kuluk lancur, kuluk mentok, klinting, dan aksesoris lengkap.",
       },
     ],
   }),
@@ -32,23 +33,21 @@ function Katalog() {
   const countMap = getRentalCountMap(bookings);
   const terlarisMap = getTerlarisByKategori(bookings, 3);
 
-  console.log("DEBUG:", { 
-    bookingsLength: bookings.length, 
-    productsLength: products.length,
-    terlarisMap,
-    countMap 
-  });
 
-  const filtered = kategori ? products.filter((p) => p.category === kategori) : products;
+
+  const activeProducts = products.filter((p) => p.active);
+  const filtered = kategori
+    ? activeProducts.filter((p) => p.category === kategori)
+    : activeProducts;
   const isSemua = !kategori;
   return (
     <SiteLayout>
       <PageHeader
         eyebrow="Katalog"
-        title={kategori?? "Seluruh Koleksi"}
+        title={kategori ?? "Seluruh Koleksi"}
         description={
           isSemua
-           ? "Koleksi terlaris minggu ini berdasarkan data sewa — update otomatis."
+            ? "Koleksi terlaris minggu ini berdasarkan data sewa — update otomatis."
             : "Setiap koleksi dirawat dan disterilkan sebelum disewakan kembali."
         }
       />
@@ -60,7 +59,7 @@ function Katalog() {
             onClick={() => navigate({ to: "/katalog", search: {} })}
             className={cn(
               "rounded-full border border-border px-4 py-2 text-sm transition-colors",
-             !kategori? "bg-primary text-primary-foreground" : "hover:bg-accent"
+              !kategori ? "bg-primary text-primary-foreground" : "hover:bg-accent",
             )}
           >
             Semua
@@ -72,7 +71,7 @@ function Katalog() {
               search={{ kategori: c }}
               className={cn(
                 "rounded-full border border-border px-4 py-2 text-sm capitalize transition-colors",
-                kategori === c? "bg-primary text-primary-foreground" : "hover:bg-accent"
+                kategori === c ? "bg-primary text-primary-foreground" : "hover:bg-accent",
               )}
             >
               {c}
@@ -80,12 +79,13 @@ function Katalog() {
           ))}
         </div>
 
-        {isSemua? (
+        {isSemua ? (
           <div className="mt-8 space-y-12">
             {Object.entries(terlarisMap).map(([kat, items]) => {
-              if (items.length === 0) return null;
-              const topId = items[0]?.id;
-              const topCount = topId? countMap[topId]?? 0 : 0;
+              const activeItems = items.filter((item) => item.active);
+              if (activeItems.length === 0) return null;
+              const topId = activeItems[0]?.id;
+              const topCount = topId ? (countMap[topId] ?? 0) : 0;
 
               return (
                 <div key={kat}>
@@ -96,7 +96,11 @@ function Katalog() {
                         🔥 {topCount}x disewa
                       </span>
                     </h2>
-                    <Link to="/katalog" search={{ kategori: kat }} className="text-sm text-primary hover:underline">
+                    <Link
+                      to="/katalog"
+                      search={{ kategori: kat }}
+                      className="text-sm text-primary hover:underline"
+                    >
                       Lihat Semua →
                     </Link>
                   </div>
@@ -105,7 +109,7 @@ function Katalog() {
                       <div key={p.id} className="relative">
                         <ProductCard product={p} />
                         <div className="absolute left-3 top-3 rounded-full bg-black/70 px-2 py-1 text-xs text-white">
-                          {countMap[p.id]?? 0} kali sewa
+                          {countMap[p.id] ?? 0} kali sewa
                         </div>
                       </div>
                     ))}
@@ -116,7 +120,9 @@ function Katalog() {
 
             <div className="border-t pt-10">
               <h2 className="text-xl font-bold">Seluruh Koleksi</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{filtered.length} koleksi ditemukan</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {filtered.length} koleksi ditemukan
+              </p>
               <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {filtered.map((p) => (
                   <ProductCard key={p.id} product={p} />
@@ -126,7 +132,9 @@ function Katalog() {
           </div>
         ) : (
           <>
-            <p className="mt-6 text-sm text-muted-foreground">{filtered.length} koleksi ditemukan</p>
+            <p className="mt-6 text-sm text-muted-foreground">
+              {filtered.length} koleksi ditemukan
+            </p>
             <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((p) => (
                 <ProductCard key={p.id} product={p} />

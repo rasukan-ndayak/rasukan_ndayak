@@ -8,8 +8,9 @@ Versi baru menambahkan:
 - `supabase/functions/rental-reminder/index.ts`
 - log anti-duplikasi `rental_notification_logs`
 - Supabase Cron + pg_net
-- pengiriman WhatsApp melalui Fonnte dari sisi server
+- pengiriman WhatsApp melalui Fonnte dari sisi server untuk booking baru dan reminder hari ambil
 - notifikasi browser sebagai tambahan ketika panel admin sedang terbuka
+- Service Worker untuk menampilkan notifikasi booking dengan klik kembali ke halaman konfirmasi
 
 Supabase Cron dapat memanggil Edge Function secara berkala melalui `pg_cron` + `pg_net`; kredensial scheduler sebaiknya disimpan di Vault. Lihat dokumentasi Supabase untuk scheduling Edge Functions.
 
@@ -142,10 +143,25 @@ dengan tanggal hari ini menurut zona waktu `Asia/Jakarta`.
 
 ## Catatan WhatsApp
 
-Yang otomatis dikirim adalah **reminder ke nomor admin** (`NOTIFICATION_WA_TARGET`)
-untuk menyiapkan booking yang keluar hari itu.
+Yang otomatis dikirim ke nomor admin (`NOTIFICATION_WA_TARGET`) adalah:
+
+- notifikasi ketika booking baru masuk pada hari tersebut;
+- reminder untuk menyiapkan booking yang keluar hari itu.
+
+Keduanya memakai log anti-duplikasi, sehingga masing-masing booking hanya dikirim
+satu kali untuk setiap jenis notifikasi per tanggal.
 
 Tombol WA di halaman admin tetap dipertahankan untuk menghubungi pelanggan secara manual.
 
 Jika nanti ingin otomatis mengirim reminder langsung ke pelanggan juga,
 bisa ditambahkan setelah alur admin ini terbukti stabil.
+
+## Notifikasi Web untuk Penyewa
+
+Halaman `/konfirmasi?kode=...` membaca `booking_notifications` setiap 10 detik.
+Setelah penyewa menekan **Aktifkan Notifikasi**, browser menampilkan perubahan status,
+jadwal, atau pembatalan melalui Service Worker `public/notification-sw.js`.
+
+Ini adalah notifikasi browser berbasis halaman aktif, bukan Web Push penuh yang tetap
+berjalan setelah browser ditutup. Web Push penuh memerlukan VAPID key, penyimpanan
+subscription per booking, serta Edge Function pengirim push.

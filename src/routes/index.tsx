@@ -38,13 +38,11 @@ export const Route = createFileRoute("/")({
       },
       {
         property: "og:title",
-        content:
-          "Rasukan Ndayak — Sewa Busana Adat Dayak",
+        content: "Rasukan Ndayak — Sewa Busana Adat Dayak",
       },
       {
         property: "og:description",
-        content:
-          "Koleksi busana adat Dayak untuk panggung, upacara, dan dokumentasi budaya.",
+        content: "Koleksi busana adat Dayak untuk panggung, upacara, dan dokumentasi budaya.",
       },
     ],
   }),
@@ -98,85 +96,57 @@ function Index() {
   const { products } = useCatalog();
 
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
-  const [galleryLoading, setGalleryLoading] =
-    useState(true);
+  const [galleryLoading, setGalleryLoading] = useState(true);
 
-  const [uploadOpen, setUploadOpen] =
-    useState(false);
-  const [uploading, setUploading] =
-    useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const [galleryTitle, setGalleryTitle] =
-    useState("");
-  const [galleryName, setGalleryName] =
-    useState("");
-  const [galleryAddress, setGalleryAddress] =
-    useState("");
-  const [galleryFile, setGalleryFile] =
-    useState<File | null>(null);
+  const [galleryTitle, setGalleryTitle] = useState("");
+  const [galleryName, setGalleryName] = useState("");
+  const [galleryAddress, setGalleryAddress] = useState("");
+  const [galleryFile, setGalleryFile] = useState<File | null>(null);
 
   /*
    * LIGHTBOX
    */
-  const [lightboxOpen, setLightboxOpen] =
-    useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const [selectedGalleryIndex, setSelectedGalleryIndex] =
-    useState(0);
+  const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(0);
 
-  const [zoomed, setZoomed] =
-    useState(false);
+  const [zoomed, setZoomed] = useState(false);
 
   /*
    * SWIPE
    */
-  const [touchStartX, setTouchStartX] =
-    useState<number | null>(null);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   async function loadGallery() {
     try {
       setGalleryLoading(true);
 
-      const rows = await rpc<GalleryRow[]>(
-        "get_gallery",
-        {},
-      );
+      const rows = await rpc<GalleryRow[]>("get_gallery", {});
 
-      const normalized: GalleryItem[] =
-        Array.isArray(rows)
-          ? rows
-              .map((row) => ({
-                id: Number(row.id),
-                image_url: row.image_url || "",
-                public_id: row.public_id || "",
-                name: row.name || "",
-                alamat: row.alamat || "",
-                created_at:
-                  row.created_at || null,
-                judul_atas:
-                  row.judul_atas || "",
-              }))
-              .filter(
-                (row) =>
-                  row.image_url.length > 0,
-              )
-          : [];
+      const normalized: GalleryItem[] = Array.isArray(rows)
+        ? rows
+            .map((row) => ({
+              id: Number(row.id),
+              image_url: row.image_url || "",
+              public_id: row.public_id || "",
+              name: row.name || "",
+              alamat: row.alamat || "",
+              created_at: row.created_at || null,
+              judul_atas: row.judul_atas || "",
+            }))
+            .filter((row) => row.image_url.length > 0)
+        : [];
 
       /*
        * FOTO TERBARU SELALU DI DEPAN
        */
       normalized.sort((a, b) => {
-        const dateA = a.created_at
-          ? new Date(
-              a.created_at,
-            ).getTime()
-          : 0;
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
 
-        const dateB = b.created_at
-          ? new Date(
-              b.created_at,
-            ).getTime()
-          : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
 
         if (dateB !== dateA) {
           return dateB - dateA;
@@ -187,18 +157,11 @@ function Index() {
 
       setGallery(normalized);
     } catch (error) {
-      console.error(
-        "Gagal mengambil gallery:",
-        error,
-      );
+      console.error("Gagal mengambil gallery:", error);
 
       setGallery([]);
 
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Gallery gagal dimuat.",
-      );
+      toast.error(error instanceof Error ? error.message : "Gallery gagal dimuat.");
     } finally {
       setGalleryLoading(false);
     }
@@ -232,9 +195,7 @@ function Index() {
       return;
     }
 
-    function handleKeyDown(
-      event: KeyboardEvent,
-    ) {
+    function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setLightboxOpen(false);
         setZoomed(false);
@@ -249,16 +210,10 @@ function Index() {
       }
     }
 
-    window.addEventListener(
-      "keydown",
-      handleKeyDown,
-    );
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown,
-      );
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [lightboxOpen, gallery.length]);
 
@@ -280,10 +235,7 @@ function Index() {
 
     setZoomed(false);
 
-    setSelectedGalleryIndex(
-      (current) =>
-        (current + 1) % gallery.length,
-    );
+    setSelectedGalleryIndex((current) => (current + 1) % gallery.length);
   }
 
   function showPreviousGallery() {
@@ -293,30 +245,19 @@ function Index() {
 
     setZoomed(false);
 
-    setSelectedGalleryIndex(
-      (current) =>
-        (current - 1 + gallery.length) %
-        gallery.length,
-    );
+    setSelectedGalleryIndex((current) => (current - 1 + gallery.length) % gallery.length);
   }
 
-  function handleLightboxTouchStart(
-    event: React.TouchEvent,
-  ) {
-    setTouchStartX(
-      event.touches[0]?.clientX ?? null,
-    );
+  function handleLightboxTouchStart(event: React.TouchEvent) {
+    setTouchStartX(event.touches[0]?.clientX ?? null);
   }
 
-  function handleLightboxTouchEnd(
-    event: React.TouchEvent,
-  ) {
+  function handleLightboxTouchEnd(event: React.TouchEvent) {
     if (touchStartX === null) {
       return;
     }
 
-    const endX =
-      event.changedTouches[0]?.clientX ?? 0;
+    const endX = event.changedTouches[0]?.clientX ?? 0;
 
     const difference = touchStartX - endX;
 
@@ -333,129 +274,80 @@ function Index() {
 
   async function handleUploadGallery() {
     if (!galleryTitle.trim()) {
-      toast.error(
-        "Nama sanggar / judul wajib diisi.",
-      );
+      toast.error("Nama sanggar / judul wajib diisi.");
       return;
     }
 
     if (!galleryName.trim()) {
-      toast.error(
-        "Nama penyewa wajib diisi.",
-      );
+      toast.error("Nama penyewa wajib diisi.");
       return;
     }
 
     if (!galleryAddress.trim()) {
-      toast.error(
-        "Alamat penyewa wajib diisi.",
-      );
+      toast.error("Alamat penyewa wajib diisi.");
       return;
     }
 
     if (!galleryFile) {
-      toast.error(
-        "Silakan pilih foto terlebih dahulu.",
-      );
+      toast.error("Silakan pilih foto terlebih dahulu.");
       return;
     }
 
-    if (
-      galleryFile.size >
-      8 * 1024 * 1024
-    ) {
-      toast.error(
-        "Ukuran foto maksimal 8 MB.",
-      );
+    if (galleryFile.size > 8 * 1024 * 1024) {
+      toast.error("Ukuran foto maksimal 8 MB.");
       return;
     }
 
     try {
       setUploading(true);
 
-      toast.loading(
-        "Mengupload foto...",
-        {
-          id: "gallery-upload",
-        },
-      );
+      toast.loading("Mengupload foto...", {
+        id: "gallery-upload",
+      });
 
-      const optimized =
-        await optimizeImage(
-          galleryFile,
-        );
+      const optimized = await optimizeImage(galleryFile);
 
-      const imageUrl =
-        await uploadToCloudinary(
-          optimized,
-          "rasukan-ndayak/gallery",
-        );
+      const imageUrl = await uploadToCloudinary(optimized, "rasukan-ndayak/gallery");
 
       let publicId = "";
 
       try {
         const url = new URL(imageUrl);
 
-        const uploadIndex =
-          url.pathname.indexOf(
-            "/upload/",
-          );
+        const uploadIndex = url.pathname.indexOf("/upload/");
 
         if (uploadIndex !== -1) {
-          let path =
-            url.pathname.substring(
-              uploadIndex +
-                "/upload/".length,
-            );
+          let path = url.pathname.substring(uploadIndex + "/upload/".length);
 
-          path = path.replace(
-            /^v\d+\//,
-            "",
-          );
+          path = path.replace(/^v\d+\//, "");
 
-          const lastDot =
-            path.lastIndexOf(".");
+          const lastDot = path.lastIndexOf(".");
 
           if (lastDot > -1) {
-            path = path.substring(
-              0,
-              lastDot,
-            );
+            path = path.substring(0, lastDot);
           }
 
-          publicId =
-            decodeURIComponent(path);
+          publicId = decodeURIComponent(path);
         }
       } catch {
         publicId = "";
       }
 
-      const inserted =
-        await insertRows<GalleryRow>(
-          "gallery_penyewa",
-          {
-            image_url: imageUrl,
-            public_id: publicId,
-            name: galleryName.trim(),
-            alamat:
-              galleryAddress.trim(),
-            judul_atas:
-              galleryTitle.trim(),
-          },
-        );
+      const inserted = await insertRows<GalleryRow>("gallery_penyewa", {
+        image_url: imageUrl,
+        public_id: publicId,
+        name: galleryName.trim(),
+        alamat: galleryAddress.trim(),
+        judul_atas: galleryTitle.trim(),
+      });
 
       if (!inserted) {
-        throw new Error(
-          "Data gallery gagal disimpan.",
-        );
+        throw new Error("Data gallery gagal disimpan.");
       }
 
-      toast.success(
-        "Foto berhasil ditambahkan.",
-        {
-          id: "gallery-upload",
-        },
-      );
+      toast.success("Foto berhasil ditambahkan.", {
+        id: "gallery-upload",
+      });
 
       setGalleryTitle("");
       setGalleryName("");
@@ -469,82 +361,51 @@ function Index() {
        */
       await loadGallery();
     } catch (error) {
-      console.error(
-        "Upload gallery gagal:",
-        error,
-      );
+      console.error("Upload gallery gagal:", error);
 
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Upload gallery gagal.",
-        {
-          id: "gallery-upload",
-        },
-      );
+      toast.error(error instanceof Error ? error.message : "Upload gallery gagal.", {
+        id: "gallery-upload",
+      });
     } finally {
       setUploading(false);
     }
   }
 
-  async function handleDeleteGallery(
-    item: GalleryItem,
-  ) {
-    const confirmed =
-      window.confirm(
-        `Hapus foto gallery "${item.name}"?`,
-      );
+  async function handleDeleteGallery(item: GalleryItem) {
+    const confirmed = window.confirm(`Hapus foto gallery "${item.name}"?`);
 
     if (!confirmed) {
       return;
     }
 
     try {
-      toast.loading(
-        "Menghapus foto...",
-        {
-          id: `gallery-delete-${item.id}`,
-        },
-      );
+      toast.loading("Menghapus foto...", {
+        id: `gallery-delete-${item.id}`,
+      });
 
       await rpc("delete_gallery", {
         p_id: item.id,
       });
 
-      if (
-        gallery[selectedGalleryIndex]?.id ===
-        item.id
-      ) {
+      if (gallery[selectedGalleryIndex]?.id === item.id) {
         closeGallery();
       }
 
-      toast.success(
-        "Foto berhasil dihapus.",
-        {
-          id: `gallery-delete-${item.id}`,
-        },
-      );
+      toast.success("Foto berhasil dihapus.", {
+        id: `gallery-delete-${item.id}`,
+      });
 
       await loadGallery();
     } catch (error) {
-      console.error(
-        "Hapus gallery gagal:",
-        error,
-      );
+      console.error("Hapus gallery gagal:", error);
 
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Foto gagal dihapus.",
-        {
-          id: `gallery-delete-${item.id}`,
-        },
-      );
+      toast.error(error instanceof Error ? error.message : "Foto gagal dihapus.", {
+        id: `gallery-delete-${item.id}`,
+      });
     }
   }
 
-  const selectedGallery =
-    gallery[selectedGalleryIndex];
+  const selectedGallery = gallery[selectedGalleryIndex];
 
   return (
     <SiteLayout>
@@ -554,70 +415,38 @@ function Index() {
       <section className="relative overflow-hidden">
         <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 lg:grid-cols-2 lg:px-8 lg:py-24">
           <div className="animate-rise">
-            <p className="text-xs uppercase tracking-[0.3em] text-primary">
-              SEWA KOSTUM NDAYAKAN
-            </p>
+            <p className="text-xs uppercase tracking-[0.3em] text-primary">SEWA KOSTUM NDAYAKAN</p>
 
-            <h1 className="mt-5 text-5xl leading-[1.05] sm:text-6xl lg:text-7xl">
-              Rasukan Ndayak
-            </h1>
+            <h1 className="mt-5 text-5xl leading-[1.05] sm:text-6xl lg:text-7xl">Rasukan Ndayak</h1>
 
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
               Dalam setiap tarian tersimpan filosofi kehidupan.
             </p>
 
             <div className="mt-9 flex flex-wrap gap-3">
-              <Button
-                asChild
-                size="lg"
-                className="rounded-full px-7"
-              >
-                <Link to="/katalog">
-                  Lihat Katalog
-                </Link>
+              <Button asChild size="lg" className="rounded-full px-7">
+                <Link to="/katalog">Lihat Katalog</Link>
               </Button>
 
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="rounded-full px-7"
-              >
-                <Link to="/booking">
-                  Booking Sekarang
-                </Link>
+              <Button asChild size="lg" variant="outline" className="rounded-full px-7">
+                <Link to="/booking">Booking Sekarang</Link>
               </Button>
 
-              <Button
-                asChild
-                size="lg"
-                variant="ghost"
-                className="rounded-full px-7"
-              >
-                <Link to="/jadwal">
-                  Cek Jadwal
-                </Link>
+              <Button asChild size="lg" variant="ghost" className="rounded-full px-7">
+                <Link to="/jadwal">Cek Jadwal</Link>
               </Button>
             </div>
 
             <dl className="mt-12 grid max-w-md grid-cols-3 gap-6">
               <div>
-                <dt className="font-display text-2xl text-primary">
-                  {products.length}
-                </dt>
+                <dt className="font-display text-2xl text-primary">{products.length}</dt>
 
-                <dd className="text-xs uppercase tracking-widest text-muted-foreground">
-                  Koleksi
-                </dd>
+                <dd className="text-xs uppercase tracking-widest text-muted-foreground">Koleksi</dd>
               </div>
 
               <div>
                 <dt className="font-display text-2xl text-primary">
-                  {products.reduce(
-                    (s, p) =>
-                      s + p.stock,
-                    0,
-                  )}
+                  {products.reduce((s, p) => s + p.stock, 0)}
                 </dt>
 
                 <dd className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -663,26 +492,16 @@ function Index() {
       <section className="mx-auto max-w-7xl px-5 pt-4 lg:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-primary">
-              GALLERY PENYEWA
-            </p>
+            <p className="text-xs uppercase tracking-[0.25em] text-primary">GALLERY PENYEWA</p>
 
-            <h2 className="mt-2 text-3xl sm:text-4xl">
-              Gallery Penyewa
-            </h2>
+            <h2 className="mt-2 text-3xl sm:text-4xl">Gallery Penyewa</h2>
 
             <p className="mt-2 text-muted-foreground">
               Dokumentasi penyewa setelah menggunakan koleksi Rasukan Ndayak.
             </p>
           </div>
 
-          <Button
-            type="button"
-            className="rounded-full"
-            onClick={() =>
-              setUploadOpen(true)
-            }
-          >
+          <Button type="button" className="rounded-full" onClick={() => setUploadOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
             Upload
           </Button>
@@ -695,13 +514,9 @@ function Index() {
           <div className="surface-card mt-8 overflow-hidden">
             <div className="flex items-center justify-between border-b border-border p-5">
               <div>
-                <h3 className="text-xl">
-                  Upload Foto Penyewa
-                </h3>
+                <h3 className="text-xl">Upload Foto Penyewa</h3>
 
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Simpan Kenanganmu disini
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">Simpan Kenanganmu disini</p>
               </div>
 
               <button
@@ -721,51 +536,33 @@ function Index() {
             <div className="grid gap-5 p-5 md:grid-cols-2">
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium">
-                    Nama Sanggar / Judul
-                  </label>
+                  <label className="text-sm font-medium">Nama Sanggar / Judul</label>
 
                   <input
                     value={galleryTitle}
-                    onChange={(e) =>
-                      setGalleryTitle(
-                        e.target.value,
-                      )
-                    }
+                    onChange={(e) => setGalleryTitle(e.target.value)}
                     placeholder="Contoh: Cinze Art_production"
                     className="mt-2 flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">
-                    Nama Penyewa
-                  </label>
+                  <label className="text-sm font-medium">Nama Penyewa</label>
 
                   <input
                     value={galleryName}
-                    onChange={(e) =>
-                      setGalleryName(
-                        e.target.value,
-                      )
-                    }
+                    onChange={(e) => setGalleryName(e.target.value)}
                     placeholder="Contoh: Rasukan Ndayak"
                     className="mt-2 flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">
-                    Alamat Penyewa
-                  </label>
+                  <label className="text-sm font-medium">Alamat Penyewa</label>
 
                   <textarea
                     value={galleryAddress}
-                    onChange={(e) =>
-                      setGalleryAddress(
-                        e.target.value,
-                      )
-                    }
+                    onChange={(e) => setGalleryAddress(e.target.value)}
                     placeholder="Contoh: Magelang"
                     rows={3}
                     className="mt-2 flex w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
@@ -774,17 +571,13 @@ function Index() {
               </div>
 
               <div>
-                <label className="text-sm font-medium">
-                  Foto
-                </label>
+                <label className="text-sm font-medium">Foto</label>
 
                 <label className="mt-2 flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border bg-secondary/30 p-5 text-center transition hover:border-primary hover:bg-primary-soft/30">
                   <ImagePlus className="h-10 w-10 text-primary" />
 
                   <p className="mt-3 text-sm font-semibold">
-                    {galleryFile
-                      ? galleryFile.name
-                      : "Pilih foto penyewa"}
+                    {galleryFile ? galleryFile.name : "Pilih foto penyewa"}
                   </p>
 
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -796,9 +589,7 @@ function Index() {
                     accept="image/jpeg,image/png,image/webp"
                     className="hidden"
                     onChange={(e) => {
-                      const file =
-                        e.target.files?.[0] ??
-                        null;
+                      const file = e.target.files?.[0] ?? null;
 
                       setGalleryFile(file);
                     }}
@@ -808,14 +599,10 @@ function Index() {
                 <Button
                   type="button"
                   disabled={uploading}
-                  onClick={
-                    handleUploadGallery
-                  }
+                  onClick={handleUploadGallery}
                   className="mt-4 w-full rounded-full"
                 >
-                  {uploading
-                    ? "Mengupload..."
-                    : "Simpan Foto"}
+                  {uploading ? "Mengupload..." : "Simpan Foto"}
                 </Button>
               </div>
             </div>
@@ -834,13 +621,9 @@ function Index() {
             <div className="surface-card p-10 text-center">
               <ImagePlus className="mx-auto h-10 w-10 text-muted-foreground" />
 
-              <p className="mt-4 font-medium">
-                Gallery penyewa masih kosong.
-              </p>
+              <p className="mt-4 font-medium">Gallery penyewa masih kosong.</p>
 
-              <p className="mt-1 text-sm text-muted-foreground">
-                Upload foto penyewa pertama.
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">Upload foto penyewa pertama.</p>
             </div>
           ) : (
             <>
@@ -857,171 +640,138 @@ function Index() {
                   sm:hidden
                 "
               >
-                {gallery.map(
-                  (item, index) => {
-                    if (!item.image_url) {
-                      return null;
-                    }
+                {gallery.map((item, index) => {
+                  if (!item.image_url) {
+                    return null;
+                  }
 
-                    return (
-                      <article
-                        key={item.id}
-                        className="
+                  return (
+                    <article
+                      key={item.id}
+                      className="
                           group relative aspect-[4/5]
                           w-[82vw] max-w-[340px]
                           shrink-0 snap-center
                           overflow-hidden rounded-2xl
                           bg-secondary shadow-sm
                         "
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openGallery(index)}
+                        className="absolute inset-0 z-10 h-full w-full cursor-zoom-in"
+                        aria-label={`Buka foto ${item.name}`}
+                      />
+
+                      <img
+                        src={item.image_url}
+                        alt={`${item.name} - ${item.judul_atas || "Rasukan Ndayak"}`}
+                        className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                        loading="lazy"
+                      />
+
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/55" />
+
+                      {/* JUDUL MOBILE */}
+                      <div className="pointer-events-none absolute left-1/2 top-4 w-[82%] -translate-x-1/2 rounded-xl border border-white/30 bg-black/20 px-3 py-2 text-center backdrop-blur-[2px]">
+                        <p className="font-display text-base font-bold leading-tight text-white drop-shadow-md">
+                          {item.judul_atas || "Rasukan Ndayak"}
+                        </p>
+                      </div>
+
+                      {/* NAMA MOBILE */}
+                      <div className="pointer-events-none absolute bottom-16 left-4 max-w-[78%] text-white drop-shadow-lg">
+                        <p className="font-display text-xl font-bold leading-tight">
+                          {item.name || "Nama Penyewa"}
+                        </p>
+
+                        <p className="mt-1 text-xs leading-relaxed text-white/95">
+                          {item.alamat || "Alamat penyewa"}
+                        </p>
+                      </div>
+
+                      {/* HAPUS */}
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteGallery(item)}
+                        className="absolute bottom-5 right-5 z-20 grid h-11 w-11 place-items-center rounded-full border border-white/40 bg-black/30 text-white backdrop-blur-sm transition hover:bg-red-600"
+                        aria-label={`Hapus foto ${item.name}`}
+                        title="Hapus foto"
                       >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openGallery(index)
-                          }
-                          className="absolute inset-0 z-10 h-full w-full cursor-zoom-in"
-                          aria-label={`Buka foto ${item.name}`}
-                        />
-
-                        <img
-                          src={
-                            item.image_url
-                          }
-                          alt={`${item.name} - ${
-                            item.judul_atas ||
-                            "Rasukan Ndayak"
-                          }`}
-                          className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
-                          loading="lazy"
-                        />
-
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/55" />
-
-                        {/* JUDUL MOBILE */}
-                        <div className="pointer-events-none absolute left-1/2 top-4 w-[82%] -translate-x-1/2 rounded-xl border border-white/30 bg-black/20 px-3 py-2 text-center backdrop-blur-[2px]">
-                          <p className="font-display text-base font-bold leading-tight text-white drop-shadow-md">
-                            {item.judul_atas ||
-                              "Rasukan Ndayak"}
-                          </p>
-                        </div>
-
-                        {/* NAMA MOBILE */}
-                        <div className="pointer-events-none absolute bottom-16 left-4 max-w-[78%] text-white drop-shadow-lg">
-                          <p className="font-display text-xl font-bold leading-tight">
-                            {item.name ||
-                              "Nama Penyewa"}
-                          </p>
-
-                          <p className="mt-1 text-xs leading-relaxed text-white/95">
-                            {item.alamat ||
-                              "Alamat penyewa"}
-                          </p>
-                        </div>
-
-                        {/* HAPUS */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void handleDeleteGallery(
-                              item,
-                            )
-                          }
-                          className="absolute bottom-5 right-5 z-20 grid h-11 w-11 place-items-center rounded-full border border-white/40 bg-black/30 text-white backdrop-blur-sm transition hover:bg-red-600"
-                          aria-label={`Hapus foto ${item.name}`}
-                          title="Hapus foto"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
-                      </article>
-                    );
-                  },
-                )}
+                        <Trash2 className="h-5 w-5" />
+                      </button>
+                    </article>
+                  );
+                })}
               </div>
 
               {/* =================================================
                   DESKTOP GRID
                   ================================================= */}
               <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
-                {gallery.map(
-                  (item, index) => {
-                    if (!item.image_url) {
-                      return null;
-                    }
+                {gallery.map((item, index) => {
+                  if (!item.image_url) {
+                    return null;
+                  }
 
-                    return (
-                      <article
-                        key={item.id}
-                        className="group relative aspect-[4/5] overflow-hidden rounded-2xl bg-secondary shadow-sm"
+                  return (
+                    <article
+                      key={item.id}
+                      className="group relative aspect-[4/5] overflow-hidden rounded-2xl bg-secondary shadow-sm"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openGallery(index)}
+                        className="absolute inset-0 z-10 h-full w-full cursor-zoom-in"
+                        aria-label={`Buka foto ${item.name}`}
+                      />
+
+                      <img
+                        src={item.image_url}
+                        alt={`${item.name} - ${item.judul_atas || "Rasukan Ndayak"}`}
+                        className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                        loading="lazy"
+                      />
+
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/55" />
+
+                      {/* JUDUL DESKTOP - DIPERKECIL */}
+                      <div className="pointer-events-none absolute left-1/2 top-4 w-[82%] -translate-x-1/2 rounded-xl border border-white/30 bg-black/20 px-3 py-2 text-center backdrop-blur-[2px]">
+                        <p className="font-display text-base font-bold leading-tight text-white drop-shadow-md sm:text-lg lg:text-xl">
+                          {item.judul_atas || "Rasukan Ndayak"}
+                        </p>
+                      </div>
+
+                      {/* NAMA + ALAMAT DESKTOP */}
+                      <div className="pointer-events-none absolute bottom-16 left-4 max-w-[78%] text-white drop-shadow-lg">
+                        <p className="font-display text-xl font-bold leading-tight sm:text-xl lg:text-lg">
+                          {item.name || "Nama Penyewa"}
+                        </p>
+
+                        <p className="mt-1 text-xs leading-relaxed text-white/95 sm:text-sm">
+                          {item.alamat || "Alamat penyewa"}
+                        </p>
+                      </div>
+
+                      {/* HAPUS */}
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteGallery(item)}
+                        className="absolute bottom-5 right-5 z-20 grid h-11 w-11 place-items-center rounded-full border border-white/40 bg-black/30 text-white backdrop-blur-sm transition hover:bg-red-600"
+                        aria-label={`Hapus foto ${item.name}`}
+                        title="Hapus foto"
                       >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openGallery(index)
-                          }
-                          className="absolute inset-0 z-10 h-full w-full cursor-zoom-in"
-                          aria-label={`Buka foto ${item.name}`}
-                        />
-
-                        <img
-                          src={
-                            item.image_url
-                          }
-                          alt={`${item.name} - ${
-                            item.judul_atas ||
-                            "Rasukan Ndayak"
-                          }`}
-                          className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
-                          loading="lazy"
-                        />
-
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/55" />
-
-                        {/* JUDUL DESKTOP - DIPERKECIL */}
-                        <div className="pointer-events-none absolute left-1/2 top-4 w-[82%] -translate-x-1/2 rounded-xl border border-white/30 bg-black/20 px-3 py-2 text-center backdrop-blur-[2px]">
-                          <p className="font-display text-base font-bold leading-tight text-white drop-shadow-md sm:text-lg lg:text-xl">
-                            {item.judul_atas ||
-                              "Rasukan Ndayak"}
-                          </p>
-                        </div>
-
-                        {/* NAMA + ALAMAT DESKTOP */}
-                        <div className="pointer-events-none absolute bottom-16 left-4 max-w-[78%] text-white drop-shadow-lg">
-                          <p className="font-display text-xl font-bold leading-tight sm:text-xl lg:text-lg">
-                            {item.name ||
-                              "Nama Penyewa"}
-                          </p>
-
-                          <p className="mt-1 text-xs leading-relaxed text-white/95 sm:text-sm">
-                            {item.alamat ||
-                              "Alamat penyewa"}
-                          </p>
-                        </div>
-
-                        {/* HAPUS */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void handleDeleteGallery(
-                              item,
-                            )
-                          }
-                          className="absolute bottom-5 right-5 z-20 grid h-11 w-11 place-items-center rounded-full border border-white/40 bg-black/30 text-white backdrop-blur-sm transition hover:bg-red-600"
-                          aria-label={`Hapus foto ${item.name}`}
-                          title="Hapus foto"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
-                      </article>
-                    );
-                  },
-                )}
+                        <Trash2 className="h-5 w-5" />
+                      </button>
+                    </article>
+                  );
+                })}
               </div>
 
               {/* PETUNJUK MOBILE */}
               {gallery.length > 1 ? (
                 <div className="mt-3 text-center text-xs text-muted-foreground sm:hidden">
-                  Geser foto ke kiri untuk melihat
-                  penyewa lainnya →
+                  Geser foto ke kiri untuk melihat penyewa lainnya →
                 </div>
               ) : null}
             </>
@@ -1032,19 +782,14 @@ function Index() {
       {/* =========================================================
           LIGHTBOX / ZOOM FOTO
       ========================================================= */}
-      {lightboxOpen &&
-      selectedGallery ? (
+      {lightboxOpen && selectedGallery ? (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3 sm:p-6"
           role="dialog"
           aria-modal="true"
           aria-label="Gallery foto penyewa"
-          onTouchStart={
-            handleLightboxTouchStart
-          }
-          onTouchEnd={
-            handleLightboxTouchEnd
-          }
+          onTouchStart={handleLightboxTouchStart}
+          onTouchEnd={handleLightboxTouchEnd}
         >
           {/* BACKDROP */}
           <button
@@ -1057,8 +802,7 @@ function Index() {
           {/* TOP BAR */}
           <div className="absolute left-0 right-0 top-0 z-[102] flex items-center justify-between px-4 py-4 sm:px-6">
             <div className="rounded-full bg-black/50 px-4 py-2 text-sm text-white backdrop-blur-md">
-              {selectedGalleryIndex + 1} /{" "}
-              {gallery.length}
+              {selectedGalleryIndex + 1} / {gallery.length}
             </div>
 
             <button
@@ -1081,21 +825,12 @@ function Index() {
               justify-center
               overflow-hidden
             "
-            onClick={(event) =>
-              event.stopPropagation()
-            }
+            onClick={(event) => event.stopPropagation()}
           >
             <img
-              src={
-                selectedGallery.image_url
-              }
-              alt={`${selectedGallery.name} - ${
-                selectedGallery.judul_atas ||
-                "Rasukan Ndayak"
-              }`}
-              onClick={() =>
-                setZoomed((value) => !value)
-              }
+              src={selectedGallery.image_url}
+              alt={`${selectedGallery.name} - ${selectedGallery.judul_atas || "Rasukan Ndayak"}`}
+              onClick={() => setZoomed((value) => !value)}
               className={`
                 max-h-[88vh]
                 max-w-[95vw]
@@ -1104,11 +839,7 @@ function Index() {
                 select-none
                 transition-transform
                 duration-300
-                ${
-                  zoomed
-                    ? "scale-[1.8] cursor-zoom-out"
-                    : "scale-100 cursor-zoom-in"
-                }
+                ${zoomed ? "scale-[1.8] cursor-zoom-out" : "scale-100 cursor-zoom-in"}
               `}
               draggable={false}
             />
@@ -1116,21 +847,11 @@ function Index() {
             {/* ZOOM BUTTON */}
             <button
               type="button"
-              onClick={() =>
-                setZoomed((value) => !value)
-              }
+              onClick={() => setZoomed((value) => !value)}
               className="absolute bottom-4 right-4 grid h-11 w-11 place-items-center rounded-full bg-black/60 text-white backdrop-blur-md transition hover:bg-black/80"
-              aria-label={
-                zoomed
-                  ? "Perkecil foto"
-                  : "Perbesar foto"
-              }
+              aria-label={zoomed ? "Perkecil foto" : "Perbesar foto"}
             >
-              {zoomed ? (
-                <Minus className="h-5 w-5" />
-              ) : (
-                <Plus className="h-5 w-5" />
-              )}
+              {zoomed ? <Minus className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
             </button>
           </div>
 
@@ -1138,9 +859,7 @@ function Index() {
           {gallery.length > 1 ? (
             <button
               type="button"
-              onClick={
-                showPreviousGallery
-              }
+              onClick={showPreviousGallery}
               className="absolute left-2 top-1/2 z-[103] grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white backdrop-blur-md transition hover:bg-black/80 sm:left-6 sm:h-14 sm:w-14"
               aria-label="Foto sebelumnya"
             >
@@ -1166,17 +885,11 @@ function Index() {
               {selectedGallery.name}
             </p>
 
-            <p className="mt-1 text-sm text-white/80">
-              {selectedGallery.alamat}
-            </p>
+            <p className="mt-1 text-sm text-white/80">{selectedGallery.alamat}</p>
 
             <p className="mt-2 text-xs text-white/60">
-              {zoomed
-                ? "Klik foto untuk memperkecil"
-                : "Klik foto untuk zoom"}
-              {gallery.length > 1
-                ? " · Geser untuk foto berikutnya"
-                : ""}
+              {zoomed ? "Klik foto untuk memperkecil" : "Klik foto untuk zoom"}
+              {gallery.length > 1 ? " · Geser untuk foto berikutnya" : ""}
             </p>
           </div>
         </div>
@@ -1188,13 +901,9 @@ function Index() {
       <section className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="text-3xl sm:text-4xl">
-              Kategori Koleksi
-            </h2>
+            <h2 className="text-3xl sm:text-4xl">Kategori Koleksi</h2>
 
-            <p className="mt-2 text-muted-foreground">
-              Telusuri berdasarkan jenis perlengkapan.
-            </p>
+            <p className="mt-2 text-muted-foreground">Telusuri berdasarkan jenis perlengkapan.</p>
           </div>
         </div>
 
@@ -1206,9 +915,7 @@ function Index() {
               search={{ kategori: c }}
               className="surface-card group flex items-center justify-between p-6 transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-glow)]"
             >
-              <span className="font-display text-xl">
-                {c}
-              </span>
+              <span className="font-display text-xl">{c}</span>
 
               <span className="text-sm text-primary opacity-0 transition-opacity group-hover:opacity-100">
                 Lihat
@@ -1222,35 +929,22 @@ function Index() {
           PRODUK PER KATEGORI
       ========================================================= */}
       {categories.map((c) => {
-        const items = products.filter(
-          (p) => p.category === c,
-        );
+        const items = products.filter((p) => p.active && p.category === c);
 
         if (items.length === 0) {
           return null;
         }
 
         return (
-          <section
-            key={c}
-            className="mx-auto max-w-7xl px-5 pb-16 lg:px-8"
-          >
+          <section key={c} className="mx-auto max-w-7xl px-5 pb-16 lg:px-8">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <h2 className="text-3xl sm:text-4xl">
-                  {c}
-                </h2>
+                <h2 className="text-3xl sm:text-4xl">{c}</h2>
 
-                <p className="mt-2 text-muted-foreground">
-                  {items.length} koleksi tersedia.
-                </p>
+                <p className="mt-2 text-muted-foreground">{items.length} koleksi tersedia.</p>
               </div>
 
-              <Button
-                asChild
-                variant="ghost"
-                className="rounded-full"
-              >
+              <Button asChild variant="ghost" className="rounded-full">
                 <Link
                   to="/katalog"
                   search={{
@@ -1263,14 +957,9 @@ function Index() {
             </div>
 
             <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {items
-                .slice(0, 3)
-                .map((p) => (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                  />
-                ))}
+              {items.slice(0, 3).map((p) => (
+                <ProductCard key={p.id} product={p} />
+              ))}
             </div>
           </section>
         );
@@ -1281,24 +970,14 @@ function Index() {
       ========================================================= */}
       <section className="mx-auto mt-20 max-w-7xl px-5 lg:px-8">
         <div className="rounded-[2.5rem] bg-primary px-8 py-14 text-center text-primary-foreground shadow-[var(--shadow-glow)] sm:px-16">
-          <h2 className="text-3xl sm:text-4xl">
-            Siap tampil memukau di panggung?
-          </h2>
+          <h2 className="text-3xl sm:text-4xl">Siap tampil memukau di panggung?</h2>
 
           <p className="mx-auto mt-4 max-w-xl text-primary-foreground/85">
-            Amankan tanggal pemakaian Anda sekarang,
-            stok koleksi terbatas untuk musim festival.
+            Amankan tanggal pemakaian Anda sekarang, stok koleksi terbatas untuk musim festival.
           </p>
 
-          <Button
-            asChild
-            size="lg"
-            variant="secondary"
-            className="mt-8 rounded-full px-8"
-          >
-            <Link to="/booking">
-              Booking Sekarang
-            </Link>
+          <Button asChild size="lg" variant="secondary" className="mt-8 rounded-full px-8">
+            <Link to="/booking">Booking Sekarang</Link>
           </Button>
         </div>
       </section>

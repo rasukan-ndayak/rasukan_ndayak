@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { format } from "date-fns";
+import { differenceInCalendarDays, format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import {
   ArrowUpRight,
@@ -25,7 +25,19 @@ function safeFormatDate(value?: string | null, pattern = "d MMM yyyy") {
   return format(date, pattern, { locale: localeId });
 }
 
+function statusLabel(status: string) {
+  switch (status) {
+    case "confirmed": return "Booking dikonfirmasi";
+    case "picked_up": return "Sudah diambil";
+    case "paid": return "Sudah dibayar";
+    case "returned": return "Sudah kembali";
+    case "cancelled": return "Dibatalkan";
+    default: return "Menunggu konfirmasi admin";
+  }
+}
+
 import { AdminGate } from "@/components/admin-gate";
+import { AdminAlert } from "@/components/admin-alert";
 import { AdminProducts } from "@/components/admin-products";
 import { ProductImage } from "@/components/product-image";
 import { StatusBadge } from "@/components/status-badge";
@@ -73,6 +85,7 @@ const menu = [
 
 function Admin() {
   const [active, setActive] = useState<string>("Dashboard");
+  const [openReportMonths, setOpenReportMonths] = useState<Record<string, boolean>>({});
 
   const { bookings } = useBookings();
   const { products, refresh: refreshCatalog } = useCatalog();
@@ -92,12 +105,20 @@ function Admin() {
         phone?: string;
         start: string;
         end: string;
+        pickupAt?: string | null;
+        performanceAt?: string | null;
+        returnAt?: string | null;
         items: Map<string, { name: string; qty: number }>;
       }
     >();
 
     for (const b of bookings) {
-      if (b.status === "cancelled" || (b.start || "").slice(0, 10) !== todayKey) continue;
+      const pickupDay = b.pickupAt
+        ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(
+            new Date(b.pickupAt),
+          )
+        : (b.start || "").slice(0, 10);
+      if (b.status === "cancelled" || pickupDay !== todayKey) continue;
 
       const group = grouped.get(b.bookingId) ?? {
         bookingId: b.bookingId,
@@ -105,6 +126,9 @@ function Admin() {
         phone: b.phone,
         start: b.start || "",
         end: b.end || "",
+        pickupAt: b.pickupAt,
+        performanceAt: b.performanceAt,
+        returnAt: b.returnAt,
         items: new Map<string, { name: string; qty: number }>(),
       };
 
@@ -131,14 +155,15 @@ function Admin() {
     });
   }, [bookings, todayKey, products]);
 
-  const revenue = bookings.reduce(
-    (sum, b) => {
-      const currentPrice = getProduct(b.productId)?.price ?? 0;
-      const price = b.priceAtBooking > 0 ? b.priceAtBooking : currentPrice;
-      return sum + price * b.qty;
-    },
-    0,
-  );
+  const revenue = bookings.reduce((sum, b) => {
+    const currentPrice = getProduct(b.productId)?.price ?? 0;
+    const price = b.priceAtBooking > 0 ? b.priceAtBooking : currentPrice;
+    const days = Math.max(
+      differenceInCalendarDays(new Date(`${b.end}T00:00:00`), new Date(`${b.start}T00:00:00`)),
+      1,
+    );
+    return sum + price * b.qty * days;
+  }, 0);
 
   const recent = [...bookings].slice(0, 6);
 
@@ -237,7 +262,7 @@ function Admin() {
         productId: string;
         unitName: string;
         unit: string;
-        days: Map<string, { qty: number; revenue: number }>;
+        days: Map<string, { qty: number; revenue: number; transactions: number }>;
       }
     >();
 
@@ -250,15 +275,24 @@ function Admin() {
         productId: key,
         unitName: product?.name ?? b.productId,
         unit: product?.unit ?? "unit",
-        days: new Map<string, { qty: number; revenue: number }>(),
+        days: new Map<string, { qty: number; revenue: number; transactions: number }>(),
       };
 
-      const day = b.start.slice(0, 10);
+      const day = b.pickupAt
+        ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(
+            new Date(b.pickupAt),
+          )
+        : b.start.slice(0, 10);
       const currentPrice = product?.price ?? 0;
       const price = b.priceAtBooking > 0 ? b.priceAtBooking : currentPrice;
-      const existing = current.days.get(day) ?? { qty: 0, revenue: 0 };
+      const rentalDays = Math.max(
+        differenceInCalendarDays(new Date(`${b.end}T00:00:00`), new Date(`${b.start}T00:00:00`)),
+        1,
+      );
+      const existing = current.days.get(day) ?? { qty: 0, revenue: 0, transactions: 0 };
       existing.qty += Number(b.qty || 0);
-      existing.revenue += Number(b.qty || 0) * price;
+      existing.transactions += 1;
+      existing.revenue += Number(b.qty || 0) * price * rentalDays;
       current.days.set(day, existing);
       grouped.set(key, current);
     }
@@ -268,12 +302,29 @@ function Admin() {
         ...item,
         rows: [...item.days.entries()]
           .sort(([a], [b]) => a.localeCompare(b))
-          .map(([date, value]) => ({ date, qty: value.qty, revenue: value.revenue })),
+          .map(([date, value]) => ({
+            date,
+            qty: value.qty,
+            revenue: value.revenue,
+            transactions: value.transactions,
+          })),
         total: [...item.days.values()].reduce((sum, value) => sum + value.qty, 0),
+        transactions: [...item.days.values()].reduce((sum, value) => sum + value.transactions, 0),
         revenue: [...item.days.values()].reduce((sum, value) => sum + value.revenue, 0),
       }))
       .sort((a, b) => a.unitName.localeCompare(b.unitName, "id"));
   }, [bookings, products]);
+
+  const reportMonths = useMemo(() => {
+    const map = new Map<string, typeof allBookings>();
+    for (const booking of allBookings) {
+      const key = (booking.start || "").slice(0, 7) || "tanpa-tanggal";
+      const list = map.get(key) ?? [];
+      list.push(booking);
+      map.set(key, list);
+    }
+    return [...map.entries()].sort(([a], [b]) => b.localeCompare(a));
+  }, [allBookings]);
 
   /* =========================
      STATISTIK
@@ -450,14 +501,12 @@ function Admin() {
                       </tr>
                     ) : (
                       allBookings.map((booking) => {
-                        const total = booking.items.reduce(
-                          (sum, item) => {
-                            const currentPrice = getProduct(item.productId)?.price ?? 0;
-                            const price = item.priceAtBooking > 0 ? item.priceAtBooking : currentPrice;
-                            return sum + price * item.qty;
-                          },
-                          0,
-                        );
+                        const total = booking.items.reduce((sum, item) => {
+                          const currentPrice = getProduct(item.productId)?.price ?? 0;
+                          const price =
+                            item.priceAtBooking > 0 ? item.priceAtBooking : currentPrice;
+                          return sum + price * item.qty;
+                        }, 0);
 
                         return (
                           <tr key={booking.id} className="border-t border-border">
@@ -551,6 +600,11 @@ function Admin() {
                             ) : null}
                           </td>
                           <td className="px-5 py-4">
+                            <div className="mb-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-3">
+                              <span>Ambil: {booking.pickupAt ? new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(booking.pickupAt)) : "-"}</span>
+                              <span>Pentas: {booking.performanceAt ? new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(booking.performanceAt)) : "-"}</span>
+                              <span>Kembali: {booking.returnAt ? new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(booking.returnAt)) : "-"}</span>
+                            </div>
                             <div className="flex flex-wrap gap-x-5 gap-y-2">
                               {[...booking.items.values()].map((item) => (
                                 <span key={item.name} className="font-medium">
@@ -663,59 +717,113 @@ function Admin() {
                 </div>
               </section>
 
-              <section className="surface-card overflow-hidden">
-                <div className="border-b border-border p-5">
-                  <h2 className="text-xl">Rincian Pendapatan</h2>
-
+              <section className="space-y-4">
+                <div>
+                  <h2 className="text-xl">Rincian Pendapatan per Bulan</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Rincian nilai setiap booking.
+                    Bulan yang sudah lewat bisa diminimalkan tanpa menghapus histori.
                   </p>
                 </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[750px] text-sm">
-                    <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                      <tr>
-                        <th className="px-5 py-3">Kode</th>
-                        <th className="px-5 py-3">Penyewa</th>
-                        <th className="px-5 py-3">Tanggal</th>
-                        <th className="px-5 py-3">Unit</th>
-                        <th className="px-5 py-3">Pendapatan</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {allBookings.map((booking) => {
-                        const total = booking.items.reduce(
-                          (sum, item) => {
-                            const currentPrice = getProduct(item.productId)?.price ?? 0;
-                            const price = item.priceAtBooking > 0 ? item.priceAtBooking : currentPrice;
-                            return sum + price * item.qty;
-                          },
-                          0,
+                {reportMonths.map(([month, monthBookings]) => {
+                  const isOpen = openReportMonths[month] ?? month === toKey(new Date()).slice(0, 7);
+                  const monthRevenue = monthBookings.reduce(
+                    (sum, booking) =>
+                      sum +
+                      booking.items.reduce((s, item) => {
+                        const price =
+                          item.priceAtBooking > 0
+                            ? item.priceAtBooking
+                            : (getProduct(item.productId)?.price ?? 0);
+                        const d = Math.max(
+                          differenceInCalendarDays(
+                            new Date(`${booking.end}T00:00:00`),
+                            new Date(`${booking.start}T00:00:00`),
+                          ),
+                          1,
                         );
-
-                        const units = booking.items.reduce((sum, item) => sum + item.qty, 0);
-
-                        return (
-                          <tr key={`report-${booking.id}`} className="border-t border-border">
-                            <td className="px-5 py-4 font-medium">{booking.code}</td>
-
-                            <td className="px-5 py-4">{booking.name}</td>
-
-                            <td className="px-5 py-4 text-muted-foreground">
-                              {safeFormatDate(booking.start, "d MMM yyyy")}
-                            </td>
-
-                            <td className="px-5 py-4">{units} unit</td>
-
-                            <td className="px-5 py-4 font-medium">{formatIDR(total)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                        return s + price * item.qty * d;
+                      }, 0),
+                    0,
+                  );
+                  return (
+                    <section key={month} className="surface-card overflow-hidden">
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-4 p-5 text-left hover:bg-secondary/40"
+                        onClick={() =>
+                          setOpenReportMonths((current) => ({ ...current, [month]: !isOpen }))
+                        }
+                      >
+                        <div>
+                          <h3 className="text-lg font-semibold">
+                            {month === "tanpa-tanggal"
+                              ? "Tanpa tanggal"
+                              : format(new Date(`${month}-01T00:00:00`), "MMMM yyyy", {
+                                  locale: localeId,
+                                })}
+                          </h3>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {monthBookings.length} transaksi · {formatIDR(monthRevenue)}
+                          </p>
+                        </div>
+                        <span className="text-sm text-primary">
+                          {isOpen ? "Minimalkan" : "Buka"}
+                        </span>
+                      </button>
+                      {isOpen ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[750px] text-sm">
+                            <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                              <tr>
+                                <th className="px-5 py-3">Kode</th>
+                                <th className="px-5 py-3">Penyewa</th>
+                                <th className="px-5 py-3">Tanggal</th>
+                                <th className="px-5 py-3">Unit</th>
+                                <th className="px-5 py-3">Pendapatan</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {monthBookings.map((booking) => {
+                                const total = booking.items.reduce((sum, item) => {
+                                  const price =
+                                    item.priceAtBooking > 0
+                                      ? item.priceAtBooking
+                                      : (getProduct(item.productId)?.price ?? 0);
+                                  const d = Math.max(
+                                    differenceInCalendarDays(
+                                      new Date(`${booking.end}T00:00:00`),
+                                      new Date(`${booking.start}T00:00:00`),
+                                    ),
+                                    1,
+                                  );
+                                  return sum + price * item.qty * d;
+                                }, 0);
+                                const units = booking.items.reduce(
+                                  (sum, item) => sum + item.qty,
+                                  0,
+                                );
+                                return (
+                                  <tr
+                                    key={`report-${booking.id}`}
+                                    className="border-t border-border"
+                                  >
+                                    <td className="px-5 py-4 font-medium">{booking.code}</td>
+                                    <td className="px-5 py-4">{booking.name}</td>
+                                    <td className="px-5 py-4 text-muted-foreground">
+                                      {safeFormatDate(booking.start, "d MMM yyyy")}
+                                    </td>
+                                    <td className="px-5 py-4">{units} unit</td>
+                                    <td className="px-5 py-4 font-medium">{formatIDR(total)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })}
               </section>
 
               <section className="space-y-5">
@@ -758,6 +866,7 @@ function Admin() {
                               <th className="px-5 py-3">Unit</th>
                               <th className="px-5 py-3">Tanggal</th>
                               <th className="px-5 py-3 text-right">Jumlah Keluar</th>
+                              <th className="px-5 py-3 text-right">Transaksi</th>
                               <th className="px-5 py-3 text-right">Pendapatan</th>
                             </tr>
                           </thead>
@@ -775,13 +884,21 @@ function Admin() {
                                   {row.qty} {unit.unit}
                                 </td>
                                 <td className="px-5 py-4 text-right font-semibold">
+                                  {row.transactions}
+                                </td>
+                                <td className="px-5 py-4 text-right font-semibold">
                                   {formatIDR(row.revenue)}
                                 </td>
                               </tr>
                             ))}
                             <tr className="border-t-2 border-border bg-secondary/40 font-bold">
-                              <td className="px-5 py-4" colSpan={2}>TOTAL {unit.unitName}</td>
-                              <td className="px-5 py-4 text-right">{unit.total} {unit.unit}</td>
+                              <td className="px-5 py-4" colSpan={2}>
+                                TOTAL {unit.unitName}
+                              </td>
+                              <td className="px-5 py-4 text-right">
+                                {unit.total} {unit.unit}
+                              </td>
+                              <td className="px-5 py-4 text-right">{unit.transactions}</td>
                               <td className="px-5 py-4 text-right">{formatIDR(unit.revenue)}</td>
                             </tr>
                           </tbody>
@@ -836,6 +953,7 @@ function Admin() {
             ================================================== */
 
             <>
+              <AdminAlert />
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map(({ label, value, icon: Icon, hint, action }) => (
                   <button

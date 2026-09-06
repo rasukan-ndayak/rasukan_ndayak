@@ -1,5 +1,5 @@
-export const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "";
-export const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "";
+export const CLOUDINARY_CLOUD_NAME = import.meta.env["VITE_CLOUDINARY_CLOUD_NAME"] || "";
+export const CLOUDINARY_UPLOAD_PRESET = import.meta.env["VITE_CLOUDINARY_UPLOAD_PRESET"] || "";
 export const CLOUDINARY_PRODUCT_FOLDER = "rasukan-ndayak/products";
 
 export function img(_folder: string, _fileName: string) {
@@ -7,20 +7,30 @@ export function img(_folder: string, _fileName: string) {
   return "";
 }
 
-export async function uploadToCloudinary(file: File, _folder = CLOUDINARY_PRODUCT_FOLDER) {
+export function cloudinaryFolderForCategory(category: string) {
+  const slug = category
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return slug || "produk";
+}
+
+export async function uploadToCloudinary(file: File, folder = CLOUDINARY_PRODUCT_FOLDER) {
   if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
-    throw new Error("Cloudinary belum dikonfigurasi. Isi VITE_CLOUDINARY_CLOUD_NAME dan VITE_CLOUDINARY_UPLOAD_PRESET.");
+    throw new Error(
+      "Cloudinary belum dikonfigurasi. Isi VITE_CLOUDINARY_CLOUD_NAME dan VITE_CLOUDINARY_UPLOAD_PRESET.",
+    );
   }
   const form = new FormData();
   form.append("file", file);
   form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-  // Folder is configured in the Cloudinary upload preset. Do not override it here.
-  // This also avoids 400 errors when the preset uses a fixed Asset folder.
+  form.append("asset_folder", folder);
 
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-    { method: "POST", body: form },
-  );
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    method: "POST",
+    body: form,
+  });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

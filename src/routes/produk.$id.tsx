@@ -10,14 +10,17 @@ import { formatIDR, loadProducts, useCatalog, statusOf } from "@/data/products";
 
 export const Route = createFileRoute("/produk/$id")({
   loader: async ({ params }) => {
-    const product = (await loadProducts()).find((p) => p.id === params.id);
+    const product = (await loadProducts()).find((p) => p.id === params.id && p.active);
     if (!product) throw notFound();
     return { product };
   },
   head: ({ loaderData }) => {
     if (!loaderData) {
       return {
-        meta: [{ title: "Koleksi tidak ditemukan — Rasukan Ndayak" }, { name: "robots", content: "noindex" }],
+        meta: [
+          { title: "Koleksi tidak ditemukan — Rasukan Ndayak" },
+          { name: "robots", content: "noindex" },
+        ],
       };
     }
     const { product } = loaderData;
@@ -37,7 +40,9 @@ function ProductDetail() {
   const { products } = useCatalog();
   const { product } = Route.useLoaderData();
   const status = statusOf(product.stock);
-  const related = products.filter((p) => p.id !== product.id && p.category === product.category);
+  const related = products.filter(
+    (p) => p.active && p.id !== product.id && p.category === product.category,
+  );
 
   return (
     <SiteLayout>
@@ -86,7 +91,12 @@ function ProductDetail() {
             </ul>
 
             <div className="mt-9 flex flex-wrap gap-3">
-              <Button asChild size="lg" className="rounded-full px-8" disabled={product.stock === 0}>
+              <Button
+                asChild
+                size="lg"
+                className="rounded-full px-8"
+                disabled={product.stock === 0}
+              >
                 <Link to="/booking" search={{ produk: product.id }}>
                   {product.stock === 0 ? "Stok Habis" : "Booking Sekarang"}
                 </Link>

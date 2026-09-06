@@ -1,3 +1,5 @@
+/// <reference path="./edge-runtime.d.ts" />
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -21,7 +23,29 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
+type ReminderKind = "booking_created" | "rental_preparation";
+type Relation<T> = T | T[] | null;
+type Booking = {
+  id: string;
+  code: string;
+  start_date: string;
+  end_date: string;
+  pickup_at: string | null;
+  performance_at: string | null;
+  return_at: string | null;
+  status: string;
+  created_at: string;
+  customers: Relation<{ name: string | null; phone: string | null }>;
+  booking_items: Array<{
+    qty: number;
+    product_id: string;
+    products: Relation<{ name: string | null; unit: string | null }>;
+  }>;
+};
+
 function jakartaDateKey(date = new Date()) {
+  if (Number.isNaN(date.getTime())) return "";
+
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Jakarta",
     year: "numeric",
@@ -44,6 +68,21 @@ function normalizePhone(value: string) {
   return digits;
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function formatDate(value: string) {
   const date = new Date(`${value}T00:00:00+07:00`);
   return new Intl.DateTimeFormat("id-ID", {
@@ -54,29 +93,36 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-function buildMessage(booking: any) {
-  const customer = Array.isArray(booking.customers) ? booking.customers[0] : booking.customers;
+function firstRelation<T>(relation: Relation<T>) {
+  return Array.isArray(relation) ? relation[0] : relation;
+}
+
+function buildMessage(booking: Booking, kind: ReminderKind) {
+  const customer = firstRelation(booking.customers);
 
   const items = Array.isArray(booking.booking_items) ? booking.booking_items : [];
 
-  const itemLines = items.map((item: any, index: number) => {
-    const product = Array.isArray(item.products) ? item.products[0] : item.products;
+  const itemLines = items.map((item, index) => {
+    const product = firstRelation(item.products);
     return `${index + 1}. ${product?.name ?? item.product_id} — ${item.qty} ${product?.unit ?? "unit"}`;
   });
 
   return [
-    "🔔 PERSIAPAN SEWA HARI INI",
+    kind === "booking_created" ? "🔔 BOOKING BARU MASUK" : "🔔 PERSIAPAN SEWA HARI INI",
     "",
     `Kode: ${booking.code}`,
-    `Tanggal keluar: ${formatDate(booking.start_date)}`,
-    `Tanggal kembali: ${formatDate(booking.end_date)}`,
+    `Tanggal ambil: ${formatDateTime(booking.pickup_at)}`,
+    `Tanggal pentas: ${formatDateTime(booking.performance_at)}`,
+    `Tanggal kembali: ${formatDateTime(booking.return_at)}`,
     `Penyewa: ${customer?.name ?? "-"}`,
     `WA penyewa: ${customer?.phone ?? "-"}`,
     "",
     "Item yang harus disiapkan:",
     ...(itemLines.length ? itemLines : ["-"]),
     "",
-    "Silakan cek booking sebelum pelanggan datang.",
+    kind === "booking_created"
+      ? "Silakan cek booking dan hubungi penyewa bila diperlukan."
+      : "Silakan cek booking sebelum pelanggan datang.",
   ].join("\n");
 }
 
@@ -96,25 +142,23 @@ async function sendFonnte(target: string, message: string) {
   });
 
   const text = await response.text();
-  let data: any = text;
+  let data: { status?: boolean; detail?: string; reason?: string } | string = text;
   try {
     data = JSON.parse(text);
   } catch {
     // Keep raw response when provider does not return JSON.
   }
 
-  if (!response.ok || data?.status === false) {
+  if (!response.ok || typeof data === "string" || data.status === false) {
     throw new Error(
-      typeof data === "string"
-        ? data
-        : (data?.detail ?? data?.reason ?? `Fonnte HTTP ${response.status}`),
+      typeof data === "string" ? data : (data.detail ?? data.reason ?? `Fonnte HTTP ${response.status}`),
     );
   }
 
   return data;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   try {
     if (req.method !== "POST") {
       return Response.json({ ok: false, error: "POST only" }, { status: 405 });
@@ -141,7 +185,7 @@ Deno.serve(async (req) => {
 
     const today = jakartaDateKey();
 
-    const { data: bookings, error: bookingError } = await supabase
+    const { data: rawBookings, error: bookingError } = await supabase
       .from("bookings")
       .select(
         `
@@ -149,7 +193,11 @@ Deno.serve(async (req) => {
         code,
         start_date,
         end_date,
+        pickup_at,
+        performance_at,
+        return_at,
         status,
+        created_at,
         customers(name, phone),
         booking_items(
           qty,
@@ -158,7 +206,6 @@ Deno.serve(async (req) => {
         )
       `,
       )
-      .eq("start_date", today)
       .eq("status", "confirmed")
       .order("created_at", { ascending: true });
 
@@ -166,28 +213,38 @@ Deno.serve(async (req) => {
       throw bookingError;
     }
 
+    const bookings = (rawBookings ?? []) as Booking[];
+    const notifications = bookings.flatMap((booking: Booking) => {
+      const createdDay = jakartaDateKey(new Date(booking.created_at));
+      const pickupDay = booking.pickup_at ? jakartaDateKey(new Date(booking.pickup_at)) : booking.start_date;
+      const result: Array<{ booking: Booking; kind: ReminderKind }> = [];
+      if (createdDay === today) result.push({ booking, kind: "booking_created" });
+      if (pickupDay === today) result.push({ booking, kind: "rental_preparation" });
+      return result;
+    });
+
     const target = normalizePhone(NOTIFICATION_WA_TARGET);
     if (!target) {
       throw new Error("NOTIFICATION_WA_TARGET tidak valid");
     }
 
-    const results: any[] = [];
+    const results: Array<{ code: string; kind: ReminderKind; status: string; error?: string }> = [];
 
-    for (const booking of bookings ?? []) {
+    for (const { booking, kind } of notifications) {
       const { data: claim, error: claimError } = await supabase.rpc("claim_rental_reminder", {
         p_booking_id: booking.id,
         p_notification_date: today,
-        p_kind: "rental_preparation",
+        p_kind: kind,
       });
 
       if (claimError) throw claimError;
       if (!claim) {
-        results.push({ code: booking.code, status: "already_sent_or_in_progress" });
+        results.push({ code: booking.code, kind, status: "already_sent_or_in_progress" });
         continue;
       }
 
       try {
-        const providerResponse = await sendFonnte(target, buildMessage(booking));
+        const providerResponse = await sendFonnte(target, buildMessage(booking, kind));
 
         const { error: logError } = await supabase
           .from("rental_notification_logs")
@@ -201,7 +258,7 @@ Deno.serve(async (req) => {
 
         if (logError) throw logError;
 
-        results.push({ code: booking.code, status: "sent" });
+        results.push({ code: booking.code, kind, status: "sent" });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
 
@@ -214,14 +271,14 @@ Deno.serve(async (req) => {
           })
           .eq("id", claim);
 
-        results.push({ code: booking.code, status: "failed", error: message });
+        results.push({ code: booking.code, kind, status: "failed", error: message });
       }
     }
 
     return Response.json({
       ok: true,
       date: today,
-      found: bookings?.length ?? 0,
+      found: notifications.length,
       results,
     });
   } catch (error) {

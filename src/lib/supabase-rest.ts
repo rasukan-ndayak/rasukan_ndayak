@@ -1,10 +1,13 @@
-const url = (import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const url = (import.meta.env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
+const key = import.meta.env["VITE_SUPABASE_ANON_KEY"] || "";
 
 export const supabaseConfigured = Boolean(url && key);
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  if (!supabaseConfigured) throw new Error("Supabase belum dikonfigurasi. Isi VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY.");
+  if (!supabaseConfigured)
+    throw new Error(
+      "Supabase belum dikonfigurasi. Isi VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY.",
+    );
   const headers = new Headers(init.headers);
   headers.set("apikey", key);
   headers.set("Authorization", `Bearer ${key}`);
@@ -23,15 +26,26 @@ export function selectRows<T>(table: string, query = "select=*") {
 }
 
 export function insertRows<T>(table: string, rows: unknown) {
-  return request<T[]>(table, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(rows) });
+  return request<T[]>(table, {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(rows),
+  });
 }
 
 export function updateRows<T>(table: string, query: string, patch: unknown) {
-  return request<T[]>(`${table}?${query}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch) });
+  return request<T[]>(`${table}?${query}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(patch),
+  });
 }
 
 export function deleteRows<T>(table: string, query: string) {
-  return request<T[]>(`${table}?${query}`, { method: "DELETE", headers: { Prefer: "return=representation" } });
+  return request<T[]>(`${table}?${query}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=representation" },
+  });
 }
 
 export function rpc<T>(name: string, args: unknown) {

@@ -3,6 +3,7 @@
   Camera,
   FolderPlus,
   ImageUp,
+  Images,
   Loader2,
   Pencil,
   Plus,
@@ -36,7 +37,8 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { optimizeImage } from "@/lib/image-upload";
 import { useMaintenance } from "@/data/maintenance";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+import { cloudinaryFolderForCategory, uploadToCloudinary } from "@/lib/cloudinary";
+import { listCloudinaryProductAssets, type CloudinaryAsset } from "@/lib/cloudinary-server";
 
 import {
   addProductRemote,
@@ -47,6 +49,7 @@ import {
   statusOf,
   updateProductRemote,
   type Category,
+  type ProductComponent,
   type Product,
 } from "@/data/products";
 
@@ -59,6 +62,8 @@ type Draft = {
   image: string;
   description: string;
   details: string;
+  components: ProductComponent[];
+  active: boolean;
 };
 
 type BulkDraft = {
@@ -79,6 +84,8 @@ const emptyDraft = (category: Category = "Kostum"): Draft => ({
   image: defaultImages[0] ?? "",
   description: "",
   details: "",
+  components: [],
+  active: true,
 });
 
 const toDraft = (p: Product): Draft => ({
@@ -90,25 +97,17 @@ const toDraft = (p: Product): Draft => ({
   image: p.image,
   description: p.description,
   details: p.details.join("\n"),
+  components: p.components,
+  active: p.active,
 });
 
-export function AdminProducts({
-  products,
-  refresh,
-}: {
-  products: Product[];
-  refresh: () => void;
-}) {
+export function AdminProducts({ products, refresh }: { products: Product[]; refresh: () => void }) {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [activeCat, setActiveCat] = useState<Category>(
-    categories[0]!,
-  );
+  const [activeCat, setActiveCat] = useState<Category>("Kostum");
 
-  const [draft, setDraft] = useState<Draft>(() =>
-    emptyDraft(categories[0]!),
-  );
+  const [draft, setDraft] = useState<Draft>(() => emptyDraft("Kostum"));
 
   const [error, setError] = useState<string | null>(null);
 
@@ -116,14 +115,9 @@ export function AdminProducts({
 
   const [cameraLoading, setCameraLoading] = useState(false);
 
-  const {
-    maintenance,
-    add: addMaintenance,
-    remove: removeMaintenance,
-  } = useMaintenance();
+  const { maintenance, add: addMaintenance, remove: removeMaintenance } = useMaintenance();
 
-  const [maintenanceProduct, setMaintenanceProduct] =
-    useState<Product | null>(null);
+  const [maintenanceProduct, setMaintenanceProduct] = useState<Product | null>(null);
 
   const [maintenanceStart, setMaintenanceStart] = useState("");
   const [maintenanceEnd, setMaintenanceEnd] = useState("");
@@ -134,6 +128,10 @@ export function AdminProducts({
   const [bulkOpen, setBulkOpen] = useState(false);
 
   const [bulkDrafts, setBulkDrafts] = useState<BulkDraft[]>([]);
+  const [cloudinaryOpen, setCloudinaryOpen] = useState(false);
+  const [cloudinaryAssets, setCloudinaryAssets] = useState<CloudinaryAsset[]>([]);
+  const [cloudinaryCursor, setCloudinaryCursor] = useState<string | null>(null);
+  const [cloudinaryLoading, setCloudinaryLoading] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
@@ -141,14 +139,42 @@ export function AdminProducts({
 
   const rowTargetRef = useRef<Product | null>(null);
 
+  const openCloudinaryFolder = async (loadMore = false) => {
+    setCloudinaryLoading(true);
+    try {
+      const result = await listCloudinaryProductAssets({
+        data: loadMore && cloudinaryCursor ? { cursor: cloudinaryCursor } : undefined,
+      });
+      if (!loadMore) {
+        const currentAssets = new Set(result.assets.map((asset) => asset.secure_url));
+        const staleProducts = products.filter(
+          (product) =>
+            product.image.includes("res.cloudinary.com/") && !currentAssets.has(product.image),
+        );
+        await Promise.all(
+          staleProducts.map((product) => updateProductRemote(product.id, { image: "" })),
+        );
+        if (staleProducts.length) {
+          refresh();
+          toast.info(`${staleProducts.length} foto lama yang sudah dihapus dibersihkan dari produk.`);
+        }
+      }
+      setCloudinaryAssets((current) => (loadMore ? [...current, ...result.assets] : result.assets));
+      setCloudinaryCursor(result.nextCursor);
+      setCloudinaryOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Folder Cloudinary gagal dibuka.");
+    } finally {
+      setCloudinaryLoading(false);
+    }
+  };
+
   /**
    * ============================
    * UPLOAD FILE FORM PRODUK
    * ============================
    */
-  const handleDraftFile = async (
-    file: File | undefined,
-  ) => {
+  const handleDraftFile = async (file: File | undefined) => {
     if (!file) return;
 
     setUploading(true);
@@ -156,7 +182,10 @@ export function AdminProducts({
 
     try {
       const optimized = await optimizeImage(file);
-      const image = await uploadToCloudinary(optimized);
+      const image = await uploadToCloudinary(
+        optimized,
+        cloudinaryFolderForCategory(draft.category),
+      );
 
       setDraft((current) => ({
         ...current,
@@ -165,10 +194,7 @@ export function AdminProducts({
 
       toast.success("Foto berhasil diunggah.");
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Gagal memproses gambar.";
+      const message = error instanceof Error ? error.message : "Gagal memproses gambar.";
 
       setError(message);
       toast.error(message);
@@ -182,16 +208,17 @@ export function AdminProducts({
    * UPLOAD FILE BARIS PRODUK
    * ============================
    */
-  const handleRowFile = async (
-    file: File | undefined,
-  ) => {
+  const handleRowFile = async (file: File | undefined) => {
     const target = rowTargetRef.current;
 
     if (!file || !target) return;
 
     try {
       const optimized = await optimizeImage(file);
-      const image = await uploadToCloudinary(optimized);
+      const image = await uploadToCloudinary(
+        optimized,
+        cloudinaryFolderForCategory(target.category),
+      );
 
       await updateProductRemote(target.id, {
         image,
@@ -201,11 +228,7 @@ export function AdminProducts({
 
       toast.success(`Foto ${target.name} diperbarui.`);
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Gagal memproses gambar.",
-      );
+      toast.error(error instanceof Error ? error.message : "Gagal memproses gambar.");
     } finally {
       rowTargetRef.current = null;
     }
@@ -251,16 +274,12 @@ export function AdminProducts({
     if (!maintenanceProduct) return;
 
     if (!maintenanceStart || !maintenanceEnd) {
-      toast.error(
-        "Tanggal mulai dan tanggal selesai wajib diisi.",
-      );
+      toast.error("Tanggal mulai dan tanggal selesai wajib diisi.");
       return;
     }
 
     if (maintenanceEnd < maintenanceStart) {
-      toast.error(
-        "Tanggal selesai tidak boleh sebelum tanggal mulai.",
-      );
+      toast.error("Tanggal selesai tidak boleh sebelum tanggal mulai.");
       return;
     }
 
@@ -274,19 +293,13 @@ export function AdminProducts({
         note: maintenanceNote.trim(),
       });
 
-      toast.success(
-        `${maintenanceProduct.name} ditandai dalam masa perawatan.`,
-      );
+      toast.success(`${maintenanceProduct.name} ditandai dalam masa perawatan.`);
 
       setMaintenanceStart("");
       setMaintenanceEnd("");
       setMaintenanceNote("");
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Gagal menyimpan jadwal perawatan.",
-      );
+      toast.error(error instanceof Error ? error.message : "Gagal menyimpan jadwal perawatan.");
     } finally {
       setMaintenanceSaving(false);
     }
@@ -297,19 +310,13 @@ export function AdminProducts({
    * BULK / FOLDER
    * ============================
    */
-  const handleBulkFiles = (
-    files: FileList | null,
-  ) => {
+  const handleBulkFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    const selected = Array.from(files).filter((file) =>
-      file.type.startsWith("image/"),
-    );
+    const selected = Array.from(files).filter((file) => file.type.startsWith("image/"));
 
     if (!selected.length) {
-      toast.error(
-        "Folder tidak berisi file gambar yang didukung.",
-      );
+      toast.error("Folder tidak berisi file gambar yang didukung.");
       return;
     }
 
@@ -350,29 +357,26 @@ export function AdminProducts({
           !Number.isInteger(stock) ||
           stock < 0
         ) {
-          toast.error(
-            `Lengkapi nama, harga, dan stok untuk ${item.file.name}.`,
-          );
+          toast.error(`Lengkapi nama, harga, dan stok untuk ${item.file.name}.`);
           continue;
         }
 
         const optimized = await optimizeImage(item.file);
-        const image = await uploadToCloudinary(optimized);
+        const image = await uploadToCloudinary(
+          optimized,
+          cloudinaryFolderForCategory(activeCat),
+        );
 
         await addProductRemote({
           name,
           category: activeCat,
-          unit:
-            activeCat === "Kostum"
-              ? "stell"
-              : "pcs",
+          unit: activeCat === "Kostum" ? "stell" : "pcs",
           price,
           stock,
           image,
-          description: item.description
-            .trim()
-            .slice(0, 600),
+          description: item.description.trim().slice(0, 600),
           details: [],
+          active: true,
           id: "",
         });
 
@@ -380,20 +384,14 @@ export function AdminProducts({
       }
 
       if (added) {
-        toast.success(
-          `${added} produk berhasil ditambahkan ke kategori ${activeCat}.`,
-        );
+        toast.success(`${added} produk berhasil ditambahkan ke kategori ${activeCat}.`);
 
         setBulkDrafts([]);
         setBulkOpen(false);
         refresh();
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Gagal menambahkan produk dari folder.",
-      );
+      toast.error(error instanceof Error ? error.message : "Gagal menambahkan produk dari folder.");
     } finally {
       setBulkLoading(false);
     }
@@ -410,31 +408,17 @@ export function AdminProducts({
     const stock = Number(draft.stock);
 
     if (name.length < 2 || name.length > 80) {
-      setError(
-        "Nama produk wajib diisi (2â€“80 karakter).",
-      );
+      setError("Nama produk wajib diisi (2–80 karakter).");
       return;
     }
 
-    if (
-      !Number.isFinite(price) ||
-      price < 0 ||
-      price > 100_000_000
-    ) {
-      setError(
-        "Harga sewa harus angka yang wajar.",
-      );
+    if (!Number.isFinite(price) || price < 0 || price > 100_000_000) {
+      setError("Harga sewa harus angka yang wajar.");
       return;
     }
 
-    if (
-      !Number.isInteger(stock) ||
-      stock < 0 ||
-      stock > 10_000
-    ) {
-      setError(
-        "Stok harus bilangan bulat 0â€“10.000.",
-      );
+    if (!Number.isInteger(stock) || stock < 0 || stock > 10_000) {
+      setError("Stok harus bilangan bulat 0–10.000.");
       return;
     }
 
@@ -445,75 +429,53 @@ export function AdminProducts({
       price,
       stock,
       image: draft.image.trim(),
-      description: draft.description
-        .trim()
-        .slice(0, 600),
+      description: draft.description.trim().slice(0, 600),
       details: draft.details
         .split("\n")
         .map((detail) => detail.trim())
         .filter(Boolean)
         .slice(0, 10),
+      components: draft.components,
+      active: draft.active,
     };
 
     try {
       if (editingId) {
-        await updateProductRemote(
-          editingId,
-          payload as Partial<Product>,
-        );
+        await updateProductRemote(editingId, payload as Partial<Product>);
 
-        toast.success(
-          `${name} diperbarui.`,
-        );
+        toast.success(`${name} diperbarui.`);
       } else {
-        await addProductRemote(
-          payload as Product,
-        );
+        await addProductRemote(payload as Product);
 
-        toast.success(
-          `${name} ditambahkan ke katalog.`,
-        );
+        toast.success(`${name} ditambahkan ke katalog.`);
       }
 
       refresh();
       setOpen(false);
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Gagal menyimpan produk.";
+      const message = error instanceof Error ? error.message : "Gagal menyimpan produk.";
 
       setError(message);
       toast.error(message);
     }
   };
 
-  const visible = products.filter(
-    (product) =>
-      product.category === activeCat,
-  );
+  const visible = products.filter((product) => product.category === activeCat);
 
   return (
     <div className="surface-card overflow-hidden">
       {/* HEADER */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
         <div>
-          <h2 className="text-lg">
-            Kelola Produk â€” {activeCat}
-          </h2>
+          <h2 className="text-lg">Kelola Produk — {activeCat}</h2>
 
           <p className="text-sm text-muted-foreground">
-            {visible.length} koleksi{" "}
-            {activeCat.toLowerCase()} Â·{" "}
-            {products.length} total di katalog
+            {visible.length} koleksi {activeCat.toLowerCase()} · {products.length} total di katalog
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            className="rounded-full"
-            onClick={startCreate}
-          >
+          <Button className="rounded-full" onClick={startCreate}>
             <Plus className="mr-2 h-4 w-4" />
             Tambah {activeCat}
           </Button>
@@ -522,9 +484,7 @@ export function AdminProducts({
             variant="outline"
             className="rounded-full"
             disabled={bulkLoading}
-            onClick={() =>
-              bulkFileRef.current?.click()
-            }
+            onClick={() => bulkFileRef.current?.click()}
           >
             <FolderPlus className="mr-2 h-4 w-4" />
             Tambah Folder
@@ -541,9 +501,7 @@ export function AdminProducts({
               directory: "",
             } as any)}
             onChange={(event) => {
-              handleBulkFiles(
-                event.target.files,
-              );
+              handleBulkFiles(event.target.files);
               event.target.value = "";
             }}
           />
@@ -553,18 +511,13 @@ export function AdminProducts({
       {/* CATEGORY */}
       <div className="flex gap-2 overflow-x-auto border-b border-border px-5 py-3">
         {categories.map((category) => {
-          const count = products.filter(
-            (product) =>
-              product.category === category,
-          ).length;
+          const count = products.filter((product) => product.category === category).length;
 
           return (
             <button
               key={category}
               type="button"
-              onClick={() =>
-                setActiveCat(category)
-              }
+              onClick={() => setActiveCat(category)}
               className={
                 activeCat === category
                   ? "shrink-0 rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground"
@@ -582,50 +535,31 @@ export function AdminProducts({
         <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-secondary/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="px-5 py-3">
-                Produk
-              </th>
+              <th className="px-5 py-3">Produk</th>
 
-              <th className="px-5 py-3">
-                Kategori
-              </th>
+              <th className="px-5 py-3">Kategori</th>
 
-              <th className="px-5 py-3">
-                Harga
-              </th>
+              <th className="px-5 py-3">Harga</th>
 
-              <th className="px-5 py-3">
-                Stok
-              </th>
+              <th className="px-5 py-3">Stok</th>
 
-              <th className="px-5 py-3">
-                Status
-              </th>
+              <th className="px-5 py-3">Status</th>
 
-              <th className="px-5 py-3 text-right">
-                Aksi
-              </th>
+              <th className="px-5 py-3 text-right">Aksi</th>
             </tr>
           </thead>
 
           <tbody>
             {visible.length === 0 ? (
               <tr className="border-t border-border">
-                <td
-                  colSpan={6}
-                  className="px-5 py-10 text-center text-sm text-muted-foreground"
-                >
-                  Belum ada produk pada
-                  kategori {activeCat}.
+                <td colSpan={6} className="px-5 py-10 text-center text-sm text-muted-foreground">
+                  Belum ada produk pada kategori {activeCat}.
                 </td>
               </tr>
             ) : null}
 
             {visible.map((product) => (
-              <tr
-                key={product.id}
-                className="border-t border-border"
-              >
+              <tr key={product.id} className="border-t border-border">
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-3">
                     <ProductImage
@@ -634,37 +568,26 @@ export function AdminProducts({
                       className="h-10 w-10 shrink-0 rounded-lg"
                     />
 
-                    <span className="font-medium">
-                      {product.name}
-                    </span>
+                    <span className="font-medium">{product.name}</span>
                   </div>
                 </td>
 
-                <td className="px-5 py-3 text-muted-foreground">
-                  {product.category}
+                <td className="px-5 py-3 text-muted-foreground">{product.category}</td>
+
+                <td className="px-5 py-3">
+                  {formatIDR(product.price)} / {product.unit}
                 </td>
 
                 <td className="px-5 py-3">
-                  {formatIDR(product.price)} /{" "}
-                  {product.unit}
+                  {product.stock} {product.unit}
                 </td>
 
                 <td className="px-5 py-3">
-                  {product.stock}{" "}
-                  {product.unit}
-                </td>
-
-                <td className="px-5 py-3">
-                  <StatusBadge
-                    status={statusOf(
-                      product.stock,
-                    )}
-                  />
+                  <StatusBadge status={statusOf(product.stock)} />
                 </td>
 
                 <td className="px-5 py-3">
                   <div className="flex justify-end gap-2">
-
                     {/* FILE / GALERI */}
                     <Button
                       size="icon"
@@ -672,8 +595,7 @@ export function AdminProducts({
                       className="rounded-full"
                       aria-label={`Pilih foto ${product.name}`}
                       onClick={() => {
-                        rowTargetRef.current =
-                          product;
+                        rowTargetRef.current = product;
                         rowFileRef.current?.click();
                       }}
                     >
@@ -686,11 +608,7 @@ export function AdminProducts({
                       variant="outline"
                       className="rounded-full"
                       aria-label={`Atur perawatan ${product.name}`}
-                      onClick={() =>
-                        openMaintenance(
-                          product,
-                        )
-                      }
+                      onClick={() => openMaintenance(product)}
                     >
                       <Wrench className="h-4 w-4" />
                     </Button>
@@ -701,11 +619,36 @@ export function AdminProducts({
                       variant="outline"
                       className="rounded-full"
                       aria-label={`Ubah ${product.name}`}
-                      onClick={() =>
-                        startEdit(product)
-                      }
+                      onClick={() => startEdit(product)}
                     >
                       <Pencil className="h-4 w-4" />
+                    </Button>
+
+                    {/* AKTIF / NONAKTIF */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => {
+                        void updateProductRemote(product.id, { active: !product.active })
+                          .then(() => {
+                            refresh();
+                            toast.success(
+                              product.active
+                                ? `${product.name} dinonaktifkan.`
+                                : `${product.name} diaktifkan kembali.`,
+                            );
+                          })
+                          .catch((error) =>
+                            toast.error(
+                              error instanceof Error
+                                ? error.message
+                                : "Gagal mengubah status produk.",
+                            ),
+                          );
+                      }}
+                    >
+                      {product.active ? "Nonaktifkan" : "Aktifkan"}
                     </Button>
 
                     {/* DELETE */}
@@ -715,21 +658,20 @@ export function AdminProducts({
                       className="rounded-full text-destructive"
                       aria-label={`Hapus ${product.name}`}
                       onClick={() => {
-                        void removeProductRemote(
-                          product.id,
+                        if (
+                          !window.confirm(
+                            `Hapus permanen ${product.name}? Jika produk pernah dipakai booking, gunakan Nonaktifkan.`,
+                          )
                         )
+                          return;
+                        void removeProductRemote(product.id)
                           .then(() => {
                             refresh();
-
-                            toast.success(
-                              `${product.name} dihapus dari katalog.`,
-                            );
+                            toast.success(`${product.name} dihapus dari katalog.`);
                           })
                           .catch((error) =>
                             toast.error(
-                              error instanceof Error
-                                ? error.message
-                                : "Gagal menghapus produk.",
+                              "Produk tidak bisa dihapus permanen. Gunakan Nonaktifkan agar histori booking tetap aman.",
                             ),
                           );
                       }}
@@ -751,9 +693,7 @@ export function AdminProducts({
         accept="image/*"
         className="hidden"
         onChange={(event) => {
-          void handleRowFile(
-            event.target.files?.[0],
-          );
+          void handleRowFile(event.target.files?.[0]);
 
           event.target.value = "";
         }}
@@ -772,80 +712,52 @@ export function AdminProducts({
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>
-              Jadwal Perawatan â€”{" "}
-              {maintenanceProduct?.name}
-            </DialogTitle>
+            <DialogTitle>Jadwal Perawatan — {maintenanceProduct?.name}</DialogTitle>
 
             <DialogDescription>
-              Pada tanggal perawatan,
-              koleksi ini otomatis tidak
-              dapat dibooking.
+              Pada tanggal perawatan, koleksi ini otomatis tidak dapat dibooking.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm">
-              <p className="font-semibold">
-                Cara kerja
-              </p>
+              <p className="font-semibold">Cara kerja</p>
 
               <p className="mt-1 text-muted-foreground">
-                Contoh 30â€“31: koleksi
-                diblokir untuk booking pada
-                periode tersebut. Sistem juga
-                menolak booking di server agar
-                tidak bisa ditembus dari
-                halaman lain.
+                Contoh 30–31: koleksi diblokir untuk booking pada periode tersebut. Sistem juga
+                menolak booking di server agar tidak bisa ditembus dari halaman lain.
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="maintenance-start">
-                  Tanggal mulai
-                </Label>
+                <Label htmlFor="maintenance-start">Tanggal mulai</Label>
 
                 <Input
                   id="maintenance-start"
                   type="date"
                   value={maintenanceStart}
-                  onChange={(event) =>
-                    setMaintenanceStart(
-                      event.target.value,
-                    )
-                  }
+                  onChange={(event) => setMaintenanceStart(event.target.value)}
                   className="rounded-xl"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="maintenance-end">
-                  Tanggal selesai
-                </Label>
+                <Label htmlFor="maintenance-end">Tanggal selesai</Label>
 
                 <Input
                   id="maintenance-end"
                   type="date"
-                  min={
-                    maintenanceStart ||
-                    undefined
-                  }
+                  min={maintenanceStart || undefined}
                   value={maintenanceEnd}
-                  onChange={(event) =>
-                    setMaintenanceEnd(
-                      event.target.value,
-                    )
-                  }
+                  onChange={(event) => setMaintenanceEnd(event.target.value)}
                   className="rounded-xl"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="maintenance-note">
-                Keterangan (opsional)
-              </Label>
+              <Label htmlFor="maintenance-note">Keterangan (opsional)</Label>
 
               <Textarea
                 id="maintenance-note"
@@ -853,11 +765,7 @@ export function AdminProducts({
                 maxLength={200}
                 placeholder="Contoh: cuci, reparasi, cek kelengkapan"
                 value={maintenanceNote}
-                onChange={(event) =>
-                  setMaintenanceNote(
-                    event.target.value,
-                  )
-                }
+                onChange={(event) => setMaintenanceNote(event.target.value)}
                 className="rounded-xl"
               />
             </div>
@@ -866,29 +774,19 @@ export function AdminProducts({
               <div className="flex items-center gap-2">
                 <CalendarRange className="h-4 w-4" />
 
-                <p className="font-semibold">
-                  Jadwal perawatan tersimpan
-                </p>
+                <p className="font-semibold">Jadwal perawatan tersimpan</p>
               </div>
 
               {maintenanceProduct &&
-              maintenance.filter(
-                (item) =>
-                  item.productId ===
-                  maintenanceProduct.id,
-              ).length === 0 ? (
+              maintenance.filter((item) => item.productId === maintenanceProduct.id).length ===
+                0 ? (
                 <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  Belum ada jadwal
-                  perawatan.
+                  Belum ada jadwal perawatan.
                 </p>
               ) : (
                 <div className="space-y-2">
                   {maintenance
-                    .filter(
-                      (item) =>
-                        item.productId ===
-                        maintenanceProduct?.id,
-                    )
+                    .filter((item) => item.productId === maintenanceProduct?.id)
                     .map((item) => (
                       <div
                         key={item.id}
@@ -896,8 +794,7 @@ export function AdminProducts({
                       >
                         <div className="min-w-0">
                           <p className="font-medium">
-                            {item.startDate} â†’{" "}
-                            {item.endDate}
+                            {item.startDate} → {item.endDate}
                           </p>
 
                           {item.note ? (
@@ -913,22 +810,14 @@ export function AdminProducts({
                           variant="outline"
                           className="shrink-0 rounded-full text-destructive"
                           onClick={() => {
-                            void removeMaintenance(
-                              item.id,
-                            )
-                              .then(() =>
-                                toast.success(
-                                  "Jadwal perawatan dihapus.",
+                            void removeMaintenance(item.id)
+                              .then(() => toast.success("Jadwal perawatan dihapus."))
+                              .catch((error) =>
+                                toast.error(
+                                  error instanceof Error
+                                    ? error.message
+                                    : "Gagal menghapus jadwal.",
                                 ),
-                              )
-                              .catch(
-                                (error) =>
-                                  toast.error(
-                                    error instanceof
-                                      Error
-                                      ? error.message
-                                      : "Gagal menghapus jadwal.",
-                                  ),
                               );
                           }}
                         >
@@ -945,9 +834,7 @@ export function AdminProducts({
             <Button
               variant="outline"
               className="rounded-full"
-              onClick={() =>
-                setMaintenanceProduct(null)
-              }
+              onClick={() => setMaintenanceProduct(null)}
             >
               Tutup
             </Button>
@@ -955,14 +842,9 @@ export function AdminProducts({
             <Button
               className="rounded-full"
               disabled={maintenanceSaving}
-              onClick={() =>
-                void submitMaintenance()
-              }
+              onClick={() => void submitMaintenance()}
             >
-              {maintenanceSaving ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-
+              {maintenanceSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Simpan Perawatan
             </Button>
           </DialogFooter>
@@ -972,198 +854,200 @@ export function AdminProducts({
       {/* ============================
           BULK FOLDER DIALOG
           ============================ */}
-      <Dialog
-        open={bulkOpen}
-        onOpenChange={setBulkOpen}
-      >
+      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>
-              Tambah Produk dari Folder â€”{" "}
-              {activeCat}
-            </DialogTitle>
+            <DialogTitle>Tambah Produk dari Folder — {activeCat}</DialogTitle>
 
             <DialogDescription>
-              Foto dari folder sudah dipilih.
-              Lengkapi nama, harga, stok,
-              dan deskripsi tiap produk
+              Foto dari folder sudah dipilih. Lengkapi nama, harga, stok, dan deskripsi tiap produk
               sebelum disimpan.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            {bulkDrafts.map(
-              (item, index) => (
-                <div
-                  key={`${item.file.name}-${index}`}
-                  className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-[80px_1fr_140px_110px]"
-                >
-                  <ProductImage
-                    src={item.preview}
-                    alt={item.file.name}
-                    className="h-20 w-20 rounded-lg"
-                  />
+            {bulkDrafts.map((item, index) => (
+              <div
+                key={`${item.file.name}-${index}`}
+                className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-[80px_1fr_140px_110px]"
+              >
+                <ProductImage
+                  src={item.preview}
+                  alt={item.file.name}
+                  className="h-20 w-20 rounded-lg"
+                />
 
-                  <div className="space-y-2">
-                    <p className="truncate text-xs text-muted-foreground">
-                      {item.file.name}
-                    </p>
-
-                    <Input
-                      placeholder="Nama kostum/produk"
-                      value={item.name}
-                      onChange={(event) =>
-                        setBulkDrafts(
-                          (all) =>
-                            all.map(
-                              (current, i) =>
-                                i === index
-                                  ? {
-                                      ...current,
-                                      name: event
-                                        .target
-                                        .value,
-                                    }
-                                  : current,
-                            ),
-                        )
-                      }
-                      className="rounded-xl"
-                    />
-
-                    <Textarea
-                      placeholder="Deskripsi produk"
-                      rows={2}
-                      value={item.description}
-                      onChange={(event) =>
-                        setBulkDrafts(
-                          (all) =>
-                            all.map(
-                              (current, i) =>
-                                i === index
-                                  ? {
-                                      ...current,
-                                      description:
-                                        event.target
-                                          .value,
-                                    }
-                                  : current,
-                            ),
-                        )
-                      }
-                      className="rounded-xl"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <p className="truncate text-xs text-muted-foreground">{item.file.name}</p>
 
                   <Input
-                    type="number"
-                    min={0}
-                    placeholder="Harga"
-                    value={item.price}
+                    placeholder="Nama kostum/produk"
+                    value={item.name}
                     onChange={(event) =>
-                      setBulkDrafts(
-                        (all) =>
-                          all.map(
-                            (current, i) =>
-                              i === index
-                                ? {
-                                    ...current,
-                                    price: event
-                                      .target
-                                      .value,
-                                  }
-                                : current,
-                          ),
+                      setBulkDrafts((all) =>
+                        all.map((current, i) =>
+                          i === index
+                            ? {
+                                ...current,
+                                name: event.target.value,
+                              }
+                            : current,
+                        ),
                       )
                     }
                     className="rounded-xl"
                   />
 
-                  <Input
-                    type="number"
-                    min={0}
-                    placeholder="Jumlah"
-                    value={item.stock}
+                  <Textarea
+                    placeholder="Deskripsi produk"
+                    rows={2}
+                    value={item.description}
                     onChange={(event) =>
-                      setBulkDrafts(
-                        (all) =>
-                          all.map(
-                            (current, i) =>
-                              i === index
-                                ? {
-                                    ...current,
-                                    stock: event
-                                      .target
-                                      .value,
-                                  }
-                                : current,
-                          ),
+                      setBulkDrafts((all) =>
+                        all.map((current, i) =>
+                          i === index
+                            ? {
+                                ...current,
+                                description: event.target.value,
+                              }
+                            : current,
+                        ),
                       )
                     }
                     className="rounded-xl"
                   />
                 </div>
-              ),
-            )}
+
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="Harga"
+                  value={item.price}
+                  onChange={(event) =>
+                    setBulkDrafts((all) =>
+                      all.map((current, i) =>
+                        i === index
+                          ? {
+                              ...current,
+                              price: event.target.value,
+                            }
+                          : current,
+                      ),
+                    )
+                  }
+                  className="rounded-xl"
+                />
+
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="Jumlah"
+                  value={item.stock}
+                  onChange={(event) =>
+                    setBulkDrafts((all) =>
+                      all.map((current, i) =>
+                        i === index
+                          ? {
+                              ...current,
+                              stock: event.target.value,
+                            }
+                          : current,
+                      ),
+                    )
+                  }
+                  className="rounded-xl"
+                />
+              </div>
+            ))}
           </div>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              className="rounded-full"
-              onClick={() =>
-                setBulkOpen(false)
-              }
-            >
+            <Button variant="outline" className="rounded-full" onClick={() => setBulkOpen(false)}>
               Batal
             </Button>
 
             <Button
               className="rounded-full"
               disabled={bulkLoading}
-              onClick={() =>
-                void submitBulk()
-              }
+              onClick={() => void submitBulk()}
             >
-              {bulkLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-
-              Simpan {bulkDrafts.length}{" "}
-              Produk
+              {bulkLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Simpan {bulkDrafts.length} Produk
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cloudinaryOpen} onOpenChange={setCloudinaryOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Pilih Foto dari Folder Cloudinary</DialogTitle>
+            <DialogDescription>
+              Folder produk: rasukan-ndayak/products. Klik gambar untuk memasukkannya ke produk.
+            </DialogDescription>
+          </DialogHeader>
+
+          {cloudinaryAssets.length ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {cloudinaryAssets.map((asset) => (
+                <button
+                  type="button"
+                  key={asset.public_id}
+                  className="overflow-hidden rounded-xl border text-left transition hover:border-primary hover:ring-2 hover:ring-primary/20"
+                  onClick={() => {
+                    setDraft((current) => ({ ...current, image: asset.secure_url }));
+                    setCloudinaryOpen(false);
+                    toast.success("Foto Cloudinary dipilih.");
+                  }}
+                >
+                  <img
+                    src={asset.secure_url}
+                    alt={asset.public_id}
+                    className="aspect-square w-full object-cover"
+                  />
+                  <span className="block truncate p-2 text-xs text-muted-foreground">
+                    {asset.public_id.split("/").pop()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              Folder belum berisi gambar.
+            </p>
+          )}
+
+          {cloudinaryCursor ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full"
+              disabled={cloudinaryLoading}
+              onClick={() => void openCloudinaryFolder(true)}
+            >
+              Muat lebih banyak
+            </Button>
+          ) : null}
         </DialogContent>
       </Dialog>
 
       {/* ============================
           ADD / EDIT PRODUCT DIALOG
           ============================ */}
-      <Dialog
-        open={open}
-        onOpenChange={setOpen}
-      >
+      <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
-              {editingId
-                ? "Ubah Produk"
-                : "Tambah Produk"}
-            </DialogTitle>
+            <DialogTitle>{editingId ? "Ubah Produk" : "Tambah Produk"}</DialogTitle>
 
             <DialogDescription>
-              Perubahan langsung tampil di
-              katalog, halaman produk, dan
-              booking.
+              Perubahan langsung tampil di katalog, halaman produk, dan booking.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 sm:grid-cols-2">
             {/* NAMA */}
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="p-nama">
-                Nama Produk
-              </Label>
+              <Label htmlFor="p-nama">Nama Produk</Label>
 
               <Input
                 id="p-nama"
@@ -1189,8 +1073,7 @@ export function AdminProducts({
                   onValueChange={(value) =>
                     setDraft((current) => ({
                       ...current,
-                      category:
-                        value as Category,
+                      category: value as Category,
                     }))
                   }
                 >
@@ -1199,16 +1082,11 @@ export function AdminProducts({
                   </SelectTrigger>
 
                   <SelectContent>
-                    {categories.map(
-                      (category) => (
-                        <SelectItem
-                          key={category}
-                          value={category}
-                        >
-                          {category}
-                        </SelectItem>
-                      ),
-                    )}
+                    {categories.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               ) : (
@@ -1227,10 +1105,7 @@ export function AdminProducts({
                 onValueChange={(value) =>
                   setDraft((current) => ({
                     ...current,
-                    unit:
-                      value as
-                        | "pcs"
-                        | "stell",
+                    unit: value as "pcs" | "stell",
                   }))
                 }
               >
@@ -1239,22 +1114,16 @@ export function AdminProducts({
                 </SelectTrigger>
 
                 <SelectContent>
-                  <SelectItem value="pcs">
-                    pcs
-                  </SelectItem>
+                  <SelectItem value="pcs">pcs</SelectItem>
 
-                  <SelectItem value="stell">
-                    stell
-                  </SelectItem>
+                  <SelectItem value="stell">stell</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {/* HARGA */}
             <div className="space-y-2">
-              <Label htmlFor="p-harga">
-                Harga Sewa (Rp)
-              </Label>
+              <Label htmlFor="p-harga">Harga Sewa (Rp)</Label>
 
               <Input
                 id="p-harga"
@@ -1264,8 +1133,7 @@ export function AdminProducts({
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
-                    price:
-                      event.target.value,
+                    price: event.target.value,
                   }))
                 }
                 className="rounded-xl"
@@ -1274,9 +1142,7 @@ export function AdminProducts({
 
             {/* STOK */}
             <div className="space-y-2">
-              <Label htmlFor="p-stok">
-                Stok
-              </Label>
+              <Label htmlFor="p-stok">Stok</Label>
 
               <Input
                 id="p-stok"
@@ -1286,8 +1152,7 @@ export function AdminProducts({
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
-                    stock:
-                      event.target.value,
+                    stock: event.target.value,
                   }))
                 }
                 className="rounded-xl"
@@ -1310,21 +1175,26 @@ export function AdminProducts({
                   type="button"
                   variant="outline"
                   className="rounded-full"
-                  disabled={
-                    uploading ||
-                    cameraLoading
-                  }
-                  onClick={() =>
-                    fileRef.current?.click()
-                  }
+                  disabled={uploading || cameraLoading}
+                  onClick={() => fileRef.current?.click()}
                 >
                   {uploading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <ImageUp className="mr-2 h-4 w-4" />
                   )}
-
                   Pilih Foto
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full"
+                  disabled={uploading || cameraLoading || cloudinaryLoading}
+                  onClick={() => void openCloudinaryFolder()}
+                >
+                  <Images className="mr-2 h-4 w-4" />
+                  {cloudinaryLoading ? "Membuka..." : "Folder Cloudinary"}
                 </Button>
 
                 <input
@@ -1333,17 +1203,13 @@ export function AdminProducts({
                   accept="image/*"
                   className="hidden"
                   onChange={(event) => {
-                    void handleDraftFile(
-                      event.target.files?.[0],
-                    );
+                    void handleDraftFile(event.target.files?.[0]);
 
                     event.target.value = "";
                   }}
                 />
 
-                <span className="text-xs text-muted-foreground">
-                  JPG/PNG/WebP, maks 6 MB
-                </span>
+                <span className="text-xs text-muted-foreground">JPG/PNG/WebP, maks 6 MB</span>
               </div>
 
               <Input
@@ -1351,8 +1217,7 @@ export function AdminProducts({
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
-                    image:
-                      event.target.value,
+                    image: event.target.value,
                   }))
                 }
                 placeholder="URL Cloudinary akan terisi otomatis setelah upload"
@@ -1362,9 +1227,7 @@ export function AdminProducts({
 
             {/* DESKRIPSI */}
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="p-desk">
-                Deskripsi
-              </Label>
+              <Label htmlFor="p-desk">Deskripsi</Label>
 
               <Textarea
                 id="p-desk"
@@ -1374,8 +1237,7 @@ export function AdminProducts({
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
-                    description:
-                      event.target.value,
+                    description: event.target.value,
                   }))
                 }
                 className="rounded-xl"
@@ -1384,9 +1246,7 @@ export function AdminProducts({
 
             {/* DETAIL */}
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="p-detail">
-                Detail (satu poin per baris)
-              </Label>
+              <Label htmlFor="p-detail">Detail (satu poin per baris)</Label>
 
               <Textarea
                 id="p-detail"
@@ -1395,45 +1255,109 @@ export function AdminProducts({
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
-                    details:
-                      event.target.value,
+                    details: event.target.value,
                   }))
                 }
                 className="rounded-xl"
               />
             </div>
+
+            {draft.category === "Fullset" ? (
+              <div className="space-y-3 sm:col-span-2">
+                <Label>Komponen Fullset</Label>
+                <p className="text-sm text-muted-foreground">
+                  Pilih produk yang menyusun fullset ini. Komponen dapat diganti dari halaman booking.
+                </p>
+                <div className="space-y-2">
+                  {draft.components.map((component, index) => (
+                    <div key={`${component.productId}-${index}`} className="flex gap-2">
+                      <Select
+                        value={component.productId}
+                        onValueChange={(value) =>
+                          setDraft((current) => ({
+                            ...current,
+                            components: current.components.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, productId: value } : item,
+                            ),
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder="Pilih komponen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {products
+                            .filter((product) => product.category !== "Fullset")
+                            .map((product) => (
+                              <SelectItem key={product.id} value={product.id}>
+                                {product.name} · {product.category}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        className="w-20 rounded-xl"
+                        type="number"
+                        min={1}
+                        value={component.qty}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            components: current.components.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, qty: Math.max(1, Number(event.target.value) || 1) }
+                                : item,
+                            ),
+                          }))
+                        }
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="rounded-full text-destructive"
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            components: current.components.filter((_, itemIndex) => itemIndex !== index),
+                          }))
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() =>
+                    setDraft((current) => ({
+                      ...current,
+                      components: [...current.components, { productId: products.find((product) => product.category !== "Fullset")?.id ?? "", qty: 1 }],
+                    }))
+                  }
+                >
+                  <Plus className="mr-2 h-4 w-4" /> Tambah Komponen
+                </Button>
+              </div>
+            ) : null}
           </div>
 
-          {error ? (
-            <p className="text-sm text-destructive">
-              {error}
-            </p>
-          ) : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              className="rounded-full"
-              onClick={() =>
-                setOpen(false)
-              }
-            >
+            <Button variant="outline" className="rounded-full" onClick={() => setOpen(false)}>
               Batal
             </Button>
 
             <Button
               className="rounded-full"
-              disabled={
-                uploading ||
-                cameraLoading
-              }
-              onClick={() =>
-                void submit()
-              }
+              disabled={uploading || cameraLoading}
+              onClick={() => void submit()}
             >
-              {editingId
-                ? "Simpan Perubahan"
-                : "Tambah Produk"}
+              {editingId ? "Simpan Perubahan" : "Tambah Produk"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1441,14 +1365,3 @@ export function AdminProducts({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-

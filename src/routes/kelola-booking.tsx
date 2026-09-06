@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarIcon,
   CheckCircle2,
+  Clock3,
   Minus,
   Plus,
   Search,
@@ -12,7 +13,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { PageHeader, SiteLayout } from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -21,184 +21,240 @@ import { Label } from "@/components/ui/label";
 import {
   addBookingItem,
   availableInRange,
-  bookingsByCode,
+  bookingsByName,
+  formatWibDateTime,
   removeBooking,
   removeBookingGroup,
   toKey,
+  toWibDateTime,
   updateBooking,
+  updateBookingStatus,
   useBookings,
+  wibTime,
 } from "@/data/bookings";
 import { formatIDR, useCatalog } from "@/data/products";
 import { cn } from "@/lib/utils";
 
-type Search = { kode?: string | undefined };
-
+type Search = { nama?: string | undefined };
 export const Route = createFileRoute("/kelola-booking")({
   validateSearch: (search: Record<string, unknown>): Search => ({
-    kode: typeof search["kode"] === "string" ? (search["kode"] as string) : undefined,
+    nama: typeof search["nama"] === "string" ? search["nama"] : undefined,
   }),
-  head: () => ({
-    meta: [
-      { title: "Ubah atau Batalkan Booking — Rasukan Ndayak" },
-      {
-        name: "description",
-        content:
-          "Cari booking dengan kode, ubah tanggal keluar-masuk dan jumlah unit tiap item dengan pengecekan ketersediaan real-time, atau batalkan nota.",
-      },
-      { property: "og:title", content: "Ubah atau Batalkan Booking — Rasukan Ndayak" },
-      {
-        property: "og:description",
-        content:
-          "Kelola jadwal sewa Anda: ubah tanggal, ubah jumlah unit tiap item, atau batalkan booking.",
-      },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Ubah atau Batalkan Booking — Rasukan Ndayak" }] }),
   component: KelolaBooking,
 });
 
 function KelolaBooking() {
-  const { kode } = Route.useSearch();
+  const { nama } = Route.useSearch();
   const navigate = useNavigate();
   const { bookings, refresh } = useBookings();
   const { products } = useCatalog();
-
-  const [query, setQuery] = useState(kode ?? "");
-  const [start, setStart] = useState<Date | undefined>();
-  const [end, setEnd] = useState<Date | undefined>();
+  const [query, setQuery] = useState(nama ?? "");
+  const [start, setStart] = useState<Date>();
+  const [end, setEnd] = useState<Date>();
+  const [pickupTime, setPickupTime] = useState("16:00");
+  const [performanceDate, setPerformanceDate] = useState("");
+  const [performanceTime, setPerformanceTime] = useState("19:00");
+  const [returnTime, setReturnTime] = useState("13:00");
   const [qtys, setQtys] = useState<Record<string, number>>({});
-
-  // Tambah produk
+  const [saving, setSaving] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState("");
   const [newQty, setNewQty] = useState(1);
-  const [addingProduct, setAddingProduct] = useState(false);
 
-  const group = useMemo(
-    () => (kode ? bookingsByCode(bookings, kode) : []),
-    [bookings, kode],
-  );
+  const group = useMemo(() => (nama ? bookingsByName(bookings, nama) : []), [bookings, nama]);
   const head = group[0];
-
-  const groupKey = group.map((b) => `${b.id}:${b.qty}:${b.start}:${b.end}`).join("|");
+  const groupKey = group
+    .map(
+      (b) =>
+        `${b.id}:${b.qty}:${b.start}:${b.end}:${b.pickupAt}:${b.performanceAt}:${b.returnAt}:${b.status}`,
+    )
+    .join("|");
 
   useEffect(() => {
     if (!head) return;
     setStart(parseISO(head.start));
     setEnd(parseISO(head.end));
+    setPickupTime(wibTime(head.pickupAt) === "-" ? "16:00" : wibTime(head.pickupAt));
+    setPerformanceDate(head.performanceAt ? head.performanceAt.slice(0, 10) : head.start);
+    setPerformanceTime(wibTime(head.performanceAt) === "-" ? "19:00" : wibTime(head.performanceAt));
+    setReturnTime(wibTime(head.returnAt) === "-" ? "13:00" : wibTime(head.returnAt));
     setQtys(Object.fromEntries(group.map((b) => [b.id, b.qty])));
-  }, [head?.id, head?.start, head?.end, groupKey]);
+  }, [head?.id, groupKey]);
 
-  const days = useMemo(() => {
-    if (!start || !end) return 1;
-    return Math.max(differenceInCalendarDays(end, start) || 1, 1);
-  }, [start, end]);
-
-  const rows = useMemo(() => {
-    return group.map((b) => {
-      const product = products.find((p) => p.id === b.productId);
-      const range =
-        start && end
-          ? availableInRange(
-              bookings,
-              b.productId,
-              toKey(start),
-              toKey(end),
-              b.bookingId,
-            )
-          : {
-              available: product?.stock ?? 0,
-              conflicts: [] as { day: string; available: number }[],
-            };
-
-      const maxQty = Math.max(range.available, 0);
-      const qty = Math.min(
-        Math.max(qtys[b.id] ?? b.qty, 1),
-        Math.max(maxQty, 1),
-      );
-
-      return {
-        booking: b,
-        product,
-        name: product?.name ?? "Koleksi",
-        unit: product?.unit ?? "pcs",
-        maxQty,
-        qty,
-        conflicts: range.conflicts,
-        subtotal: (product?.price ?? b.priceAtBooking ?? 0) * qty * days,
-      };
-    });
-  }, [group, bookings, start, end, days, qtys, products]);
-
-  const availableProducts = useMemo(() => {
-    if (!start || !end) return [];
-
-    return products
-      .filter((p) => !group.some((b) => b.productId === p.id))
-      .map((product) => {
-        const range = availableInRange(
-          bookings,
-          product.id,
-          toKey(start),
-          toKey(end),
-          head?.bookingId,
-        );
-
-        return {
-          product,
-          available: Math.max(range.available, 0),
-        };
-      });
-  }, [products, group, bookings, start, end, head?.bookingId]);
-
-  const selectedProductInfo = availableProducts.find(
-    (x) => x.product.id === selectedProduct,
+  const days = useMemo(
+    () => (start && end ? Math.max(differenceInCalendarDays(end, start), 1) : 1),
+    [start, end],
+  );
+  const schedule =
+    start && end
+      ? {
+          pickupAt: toWibDateTime(toKey(start), pickupTime),
+          performanceAt: toWibDateTime(performanceDate || toKey(start), performanceTime),
+          returnAt: toWibDateTime(toKey(end), returnTime),
+        }
+      : null;
+  const scheduleValid = Boolean(
+    schedule &&
+    new Date(schedule.pickupAt) < new Date(schedule.performanceAt) &&
+    new Date(schedule.performanceAt) < new Date(schedule.returnAt),
   );
 
+  const rows = useMemo(
+    () =>
+      group.map((b) => {
+        const product = products.find((p) => p.id === b.productId);
+        const range =
+          start && end
+            ? availableInRange(
+                bookings,
+                b.productId,
+                toKey(start),
+                toKey(end),
+                b.bookingId,
+                [],
+                schedule ?? undefined,
+              )
+            : {
+                available: product?.stock ?? 0,
+                conflicts: [] as { day: string; available: number }[],
+              };
+        const maxQty = Math.max(range.available, 0);
+        const qty = Math.min(Math.max(qtys[b.id] ?? b.qty, 1), Math.max(maxQty, 1));
+        return {
+          booking: b,
+          product,
+          name: product?.name ?? "Koleksi",
+          unit: product?.unit ?? "pcs",
+          maxQty,
+          qty,
+          conflicts: range.conflicts,
+          subtotal: (product?.price ?? b.priceAtBooking ?? 0) * qty * days,
+        };
+      }),
+    [group, products, bookings, start, end, schedule?.pickupAt, schedule?.returnAt, days, qtys],
+  );
+
+  const availableProducts = useMemo(
+    () =>
+      start && end
+        ? products
+            .filter((p) => !group.some((b) => b.productId === p.id))
+            .map((product) => ({
+              product,
+              available: availableInRange(
+                bookings,
+                product.id,
+                toKey(start),
+                toKey(end),
+                head?.bookingId,
+                [],
+                schedule ?? undefined,
+              ).available,
+            }))
+        : [],
+    [
+      products,
+      group,
+      bookings,
+      start,
+      end,
+      head?.bookingId,
+      schedule?.pickupAt,
+      schedule?.returnAt,
+    ],
+  );
+  const selectedProductInfo = availableProducts.find((x) => x.product.id === selectedProduct);
   const total = rows.reduce((s, r) => s + r.subtotal, 0);
   const anyFull = rows.some((r) => r.maxQty === 0);
-  const canSave = Boolean(start && end) && rows.length > 0 && !anyFull;
 
-  const handleAddProduct = async () => {
-    if (!head || !selectedProduct) return;
-
-    const selected = availableProducts.find(
-      (x) => x.product.id === selectedProduct,
-    );
-
-    if (!selected) {
-      toast.error("Produk tidak tersedia untuk tanggal booking ini.");
-      return;
-    }
-
-    const qty = Math.max(1, Math.floor(Number(newQty) || 1));
-
-    if (selected.available < qty) {
-      toast.error("Jumlah melebihi stok tersedia", {
-        description: `Maksimal ${selected.available} ${selected.product.unit}.`,
+  const handleSave = async () => {
+    if (!head || !start || !end || !schedule || !scheduleValid) {
+      toast.error("Jadwal belum valid.", {
+        description:
+          "Pastikan urutan ambil → pentas → kembali benar dan menggunakan format 24 jam.",
       });
       return;
     }
-
-    setAddingProduct(true);
-
+    if (anyFull) {
+      toast.error("Jadwal bertabrakan dengan stok yang tersedia.");
+      return;
+    }
+    setSaving(true);
     try {
-      await addBookingItem(head.bookingId, selectedProduct, qty);
+      await Promise.all(
+        rows.map((row) =>
+          updateBooking(row.booking.id, {
+            qty: row.qty,
+            start: toKey(start),
+            end: toKey(end),
+            pickupAt: schedule.pickupAt,
+            performanceAt: schedule.performanceAt,
+            returnAt: schedule.returnAt,
+          }),
+        ),
+      );
       await refresh();
-
-      setSelectedProduct("");
-      setNewQty(1);
-
-      toast.success(`${selected.product.name} berhasil ditambahkan`, {
-        description: `${qty} ${selected.product.unit} masuk ke nota ${head.code}.`,
+      toast.success(`Booking ${head.code} diperbarui`, {
+        description: "Perubahan jadwal dan jumlah unit sudah disimpan.",
       });
     } catch (error) {
-      toast.error("Produk gagal ditambahkan", {
-        description:
-          error instanceof Error
-            ? error.message
-            : "Periksa koneksi Supabase lalu coba lagi.",
+      toast.error("Perubahan booking gagal disimpan", {
+        description: error instanceof Error ? error.message : "Periksa koneksi Supabase.",
       });
     } finally {
-      setAddingProduct(false);
+      setSaving(false);
+    }
+  };
+
+  const handleStatus = async (
+    status: "confirmed" | "picked_up" | "paid" | "returned" | "cancelled",
+  ) => {
+    if (!head) return;
+    try {
+      await updateBookingStatus(head.bookingId, status);
+      await refresh();
+      toast.success(`Status booking diubah menjadi ${statusLabel(status)}.`);
+    } catch (error) {
+      toast.error("Status gagal diubah", {
+        description: error instanceof Error ? error.message : "Periksa koneksi Supabase.",
+      });
+    }
+  };
+
+  const handleAddProduct = async () => {
+    if (!head || !selectedProductInfo) return;
+    if (newQty > selectedProductInfo.available) {
+      toast.error("Jumlah melebihi stok tersedia.");
+      return;
+    }
+    try {
+      await addBookingItem(head.bookingId, selectedProduct, newQty);
+      await refresh();
+      setSelectedProduct("");
+      setNewQty(1);
+      toast.success("Produk berhasil ditambahkan ke nota.");
+    } catch (error) {
+      toast.error("Produk gagal ditambahkan", {
+        description: error instanceof Error ? error.message : "Periksa koneksi Supabase.",
+      });
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!head) return;
+    if (!window.confirm(`Batalkan seluruh booking ${head.code}?`)) return;
+    try {
+      await removeBookingGroup(head.code);
+      await refresh();
+      setQuery("");
+      toast.success(`Booking ${head.code} dibatalkan`, {
+        description: "Semua unit kembali tersedia di jadwal.",
+      });
+      await navigate({ to: "/kelola-booking", search: {} });
+    } catch (error) {
+      toast.error("Booking gagal dibatalkan", {
+        description: error instanceof Error ? error.message : "Periksa koneksi Supabase.",
+      });
     }
   };
 
@@ -207,27 +263,23 @@ function KelolaBooking() {
       <PageHeader
         eyebrow="Kelola Booking"
         title="Ubah atau Batalkan Booking"
-        description="Masukkan kode booking Anda. Semua item dalam satu nota bisa diubah tanggal dan jumlah unitnya, langsung dicek terhadap jadwal."
+        description="Cari nama penyewa untuk mengubah jadwal, jumlah unit, atau status. Semua jam menggunakan format 24 jam WIB."
       />
-
       <div className="mx-auto max-w-5xl px-5 py-12 lg:px-8">
         <form
-          className="surface-card flex flex-col gap-3 p-6 sm:flex-row sm:items-end sm:p-7"
+          className="surface-card flex flex-col gap-3 p-6 sm:flex-row sm:items-end"
           onSubmit={(e) => {
             e.preventDefault();
-            void navigate({
-              to: "/kelola-booking",
-              search: { kode: query.trim() },
-            });
+            void navigate({ to: "/kelola-booking", search: { nama: query.trim() } });
           }}
         >
           <div className="flex-1 space-y-2">
-            <Label htmlFor="kode">Kode Booking</Label>
+            <Label htmlFor="nama">Nama Penyewa</Label>
             <Input
-              id="kode"
+              id="nama"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Contoh: RN-2401"
+              placeholder="Contoh: Cinze art production"
               className="rounded-xl"
             />
           </div>
@@ -235,14 +287,11 @@ function KelolaBooking() {
             <Search className="mr-2 h-4 w-4" /> Cari Booking
           </Button>
         </form>
-
-        {kode && !head ? (
-          <p className="mt-6 flex items-center gap-2 rounded-xl bg-warning/10 p-4 text-sm text-warning">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            Kode <span className="font-semibold">{kode}</span> tidak ditemukan di perangkat ini.
+        {nama && !head ? (
+          <p className="mt-6 rounded-xl bg-warning/10 p-4 text-sm text-warning">
+            <AlertTriangle className="mr-2 inline h-4 w-4" /> Penyewa dengan nama {nama} tidak ditemukan.
           </p>
         ) : null}
-
         {head ? (
           <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <div className="space-y-6">
@@ -257,312 +306,233 @@ function KelolaBooking() {
                   </div>
                 </div>
                 <p className="mt-4 text-sm text-muted-foreground">
-                  {group.length} item ·{" "}
-                  {format(parseISO(head.start), "d MMM", { locale: localeId })} –{" "}
-                  {format(parseISO(head.end), "d MMM yyyy", { locale: localeId })}
+                  Status saat ini: <b>{statusLabel(head.status)}</b>
                 </p>
               </div>
-
               <div className="surface-card p-6 sm:p-8">
-                <h2 className="text-2xl">Ubah Tanggal</h2>
+                <h2 className="text-2xl">Jadwal Ambil, Pentas & Kembali</h2>
                 <div className="mt-5 grid gap-6 md:grid-cols-2">
                   <div>
                     <p className="mb-3 flex items-center gap-2 text-sm font-medium">
-                      <CalendarIcon className="h-4 w-4 text-primary" /> Tanggal Keluar
+                      <CalendarIcon className="h-4 w-4 text-primary" /> Tanggal Ambil
                     </p>
                     <Calendar
                       mode="single"
                       selected={start}
-                      onSelect={setStart}
+                      onSelect={(d) => d && setStart(d)}
                       locale={localeId}
                       className={cn("pointer-events-auto rounded-2xl border border-border p-3")}
+                      disabled={{
+                        before:
+                          parseISO(head.start) < new Date() ? new Date() : parseISO(head.start),
+                      }}
                     />
                   </div>
-
                   <div>
                     <p className="mb-3 flex items-center gap-2 text-sm font-medium">
-                      <CalendarIcon className="h-4 w-4 text-primary" /> Tanggal Masuk
+                      <CalendarIcon className="h-4 w-4 text-primary" /> Tanggal Kembali
                     </p>
                     <Calendar
                       mode="single"
                       selected={end}
-                      onSelect={setEnd}
+                      onSelect={(d) => d && d >= (start ?? d) && setEnd(d)}
                       locale={localeId}
                       disabled={start ? { before: start } : undefined}
                       className={cn("pointer-events-auto rounded-2xl border border-border p-3")}
                     />
                   </div>
                 </div>
+                <div className="mt-6 grid gap-4 md:grid-cols-3">
+                  <TimeInput
+                    id="pickup"
+                    label="Jam Ambil"
+                    value={pickupTime}
+                    onChange={setPickupTime}
+                  />
+                  <div>
+                    <Label htmlFor="performance-date">Tanggal Pentas</Label>
+                    <Input
+                      id="performance-date"
+                      type="date"
+                      min={start ? toKey(start) : undefined}
+                      max={end ? toKey(end) : undefined}
+                      value={performanceDate}
+                      onChange={(e) => setPerformanceDate(e.target.value)}
+                      className="mt-2 h-11 rounded-xl"
+                    />
+                  </div>
+                  <TimeInput
+                    id="performance"
+                    label="Jam Pentas"
+                    value={performanceTime}
+                    onChange={setPerformanceTime}
+                  />
+                  <TimeInput
+                    id="return"
+                    label="Jam Kembali"
+                    value={returnTime}
+                    onChange={setReturnTime}
+                  />
+                </div>
+                {!scheduleValid ? (
+                  <p className="mt-4 rounded-xl bg-warning/10 p-3 text-sm text-warning">
+                    <Clock3 className="mr-2 inline h-4 w-4" /> Urutan waktu harus ambil → pentas →
+                    kembali.
+                  </p>
+                ) : null}
               </div>
-
               <div className="surface-card p-6 sm:p-8">
                 <h2 className="text-2xl">Item dalam Nota</h2>
-
                 <div className="mt-5 space-y-4">
                   {rows.map((row) => (
-                    <div
-                      key={row.booking.id}
-                      className="rounded-2xl border border-border p-4 sm:p-5"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{row.name}</p>
+                    <div key={row.booking.id} className="rounded-2xl border p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-medium">{row.name}</p>
                           <p className="text-xs uppercase tracking-widest text-primary">
                             {row.product?.category}
                           </p>
                         </div>
-
                         {rows.length > 1 ? (
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
                             className="rounded-full text-destructive"
-                            onClick={() => {
-                              void (async () => {
-                                try {
-                                  await removeBooking(row.booking.id);
-                                  await refresh();
-                                  toast.success(`${row.name} dihapus dari nota ${head.code}`);
-                                } catch (error) {
-                                  toast.error("Item gagal dihapus", {
-                                    description:
-                                      error instanceof Error
-                                        ? error.message
-                                        : "Periksa koneksi Supabase lalu coba lagi.",
-                                  });
-                                }
-                              })();
+                            onClick={async () => {
+                              try {
+                                await removeBooking(row.booking.id);
+                                await refresh();
+                                toast.success("Item dihapus dari nota.");
+                              } catch (error) {
+                                toast.error(
+                                  error instanceof Error ? error.message : "Item gagal dihapus.",
+                                );
+                              }
                             }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         ) : null}
                       </div>
-
                       <div className="mt-4 flex flex-wrap items-center gap-3">
                         <Button
                           type="button"
                           variant="outline"
                           size="icon"
                           className="rounded-full"
-                          onClick={() =>
-                            setQtys((p) => ({
-                              ...p,
-                              [row.booking.id]: Math.max(1, row.qty - 1),
-                            }))
-                          }
                           disabled={row.qty <= 1}
+                          onClick={() =>
+                            setQtys((p) => ({ ...p, [row.booking.id]: Math.max(1, row.qty - 1) }))
+                          }
                         >
                           <Minus className="h-4 w-4" />
                         </Button>
-
-                        <span className="w-12 text-center text-lg font-semibold">
-                          {row.qty}
-                        </span>
-
+                        <span className="w-10 text-center font-semibold">{row.qty}</span>
                         <Button
                           type="button"
                           variant="outline"
                           size="icon"
                           className="rounded-full"
+                          disabled={row.qty >= row.maxQty}
                           onClick={() =>
                             setQtys((p) => ({
                               ...p,
                               [row.booking.id]: Math.min(row.maxQty, row.qty + 1),
                             }))
                           }
-                          disabled={row.qty >= row.maxQty}
                         >
                           <Plus className="h-4 w-4" />
                         </Button>
-
                         <span className="text-sm text-muted-foreground">
-                          tersedia {row.maxQty} dari {row.product?.stock ?? 0}{" "}
-                          {row.unit} pada tanggal ini · {formatIDR(row.subtotal)}
+                          maks. {row.maxQty} {row.unit} · {formatIDR(row.subtotal)}
                         </span>
                       </div>
-
-                      {row.conflicts.length > 0 ? (
-                        <p className="mt-4 flex items-start gap-2 rounded-xl bg-warning/10 p-4 text-sm text-warning">
-                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                          Tanggal{" "}
+                      {row.conflicts.length ? (
+                        <p className="mt-3 rounded-xl bg-warning/10 p-3 text-sm text-warning">
+                          Ada jadwal lain yang bertabrakan pada{" "}
                           {row.conflicts
-                            .map((c) =>
-                              format(parseISO(c.day), "d MMM", { locale: localeId }),
-                            )
-                            .join(", ")}{" "}
-                          sudah penuh untuk {row.name}. Pilih tanggal lain atau lihat{" "}
-                          <Link to="/jadwal" className="underline">
-                            jadwal
-                          </Link>
+                            .map((c) => format(parseISO(c.day), "d MMM", { locale: localeId }))
+                            .join(", ")}
                           .
                         </p>
                       ) : null}
                     </div>
                   ))}
                 </div>
-
-                {/* TAMBAH PRODUK */}
-                <div className="mt-5 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-primary">Tambah Produk</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Tambahkan produk lain ke nota booking ini.
-                      </p>
-                    </div>
-                    <Plus className="h-5 w-5 text-primary" />
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_120px]">
-                    <select
-                      value={selectedProduct}
-                      onChange={(e) => {
-                        setSelectedProduct(e.target.value);
-                        setNewQty(1);
-                      }}
-                      className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      <option value="">Pilih produk...</option>
-
-                      {availableProducts.map(({ product, available }) => (
-                        <option
-                          key={product.id}
-                          value={product.id}
-                          disabled={available <= 0}
-                        >
-                          {product.name} — tersedia {available} {product.unit}
-                        </option>
-                      ))}
-                    </select>
-
-                    <Input
-                      type="number"
-                      min={1}
-                      max={selectedProductInfo?.available ?? undefined}
-                      value={newQty}
-                      onChange={(e) =>
-                        setNewQty(Math.max(1, Number(e.target.value) || 1))
-                      }
-                      className="rounded-xl"
-                    />
-                  </div>
-
-                  {selectedProductInfo ? (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      Stok tersedia:{" "}
-                      <span className="font-medium text-foreground">
-                        {selectedProductInfo.available} {selectedProductInfo.product.unit}
-                      </span>
-                      {" · "}
-                      Harga:{" "}
-                      <span className="font-medium text-foreground">
-                        {formatIDR(selectedProductInfo.product.price)}
-                      </span>
-                    </p>
-                  ) : null}
-
-                  <Button
-                    type="button"
-                    className="mt-4 w-full rounded-full"
-                    disabled={
-                      !selectedProduct ||
-                      addingProduct ||
-                      !selectedProductInfo ||
-                      selectedProductInfo.available < newQty
-                    }
-                    onClick={() => void handleAddProduct()}
+                <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_120px]">
+                  <select
+                    value={selectedProduct}
+                    onChange={(e) => setSelectedProduct(e.target.value)}
+                    className="h-11 rounded-xl border bg-background px-3 text-sm"
                   >
-                    <Plus className="mr-2 h-4 w-4" />
-                    {addingProduct ? "Menambahkan..." : "Tambah Produk ke Nota"}
-                  </Button>
+                    <option value="">Tambah produk...</option>
+                    {availableProducts.map((x) => (
+                      <option key={x.product.id} value={x.product.id} disabled={x.available <= 0}>
+                        {x.product.name} — tersedia {x.available}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={newQty}
+                    onChange={(e) => setNewQty(Math.max(1, Number(e.target.value) || 1))}
+                    className="rounded-xl"
+                  />
                 </div>
+                <Button
+                  type="button"
+                  className="mt-3 w-full rounded-full"
+                  disabled={!selectedProductInfo || newQty > selectedProductInfo.available}
+                  onClick={() => void handleAddProduct()}
+                >
+                  Tambah Produk ke Nota
+                </Button>
               </div>
             </div>
-
             <aside className="lg:sticky lg:top-28 lg:h-fit">
               <div className="surface-card p-6 sm:p-7">
-                <h2 className="text-xl">Ringkasan Baru</h2>
-
+                <h2 className="text-xl">Ringkasan & Status</h2>
                 <dl className="mt-5 space-y-3 text-sm">
+                  <Row label="Ambil" value={`${formatDate(start)} · ${pickupTime}`} />
                   <Row
-                    label="Tanggal keluar"
-                    value={start ? format(start, "d MMM yyyy", { locale: localeId }) : "-"}
+                    label="Pentas"
+                    value={`${formatDate(performanceDate ? parseISO(performanceDate) : undefined)} · ${performanceTime}`}
                   />
-                  <Row
-                    label="Tanggal masuk"
-                    value={end ? format(end, "d MMM yyyy", { locale: localeId }) : "-"}
-                  />
+                  <Row label="Kembali" value={`${formatDate(end)} · ${returnTime}`} />
                   <Row label="Durasi" value={`${days} hari`} />
-                  <Row label="Jumlah item" value={`${rows.length} koleksi`} />
-                  <Row
-                    label="Total unit"
-                    value={`${rows.reduce((s, r) => s + r.qty, 0)} unit`}
-                  />
+                  <Row label="Total" value={formatIDR(total)} />
                 </dl>
-
-                <div className="mt-5 flex items-center justify-between border-t border-border pt-5">
-                  <span className="text-sm text-muted-foreground">Total</span>
-                  <span className="font-display text-2xl text-primary">
-                    {formatIDR(total)}
-                  </span>
-                </div>
-
                 <Button
                   size="lg"
                   className="mt-6 w-full rounded-full"
-                  disabled={!canSave}
-                  onClick={async () => {
-                    if (!start || !end) return;
-
-                    try {
-                      await Promise.all(
-                        rows.map((row) =>
-                          updateBooking(row.booking.id, {
-                            qty: row.qty,
-                            start: toKey(start),
-                            end: toKey(end),
-                          }),
-                        ),
-                      );
-
-                      await refresh();
-
-                      toast.success(`Booking ${head.code} diperbarui`, {
-                        description: `${rows.length} item · ${days} hari. Jadwal sudah disesuaikan.`,
-                      });
-
-                      void navigate({
-                        to: "/konfirmasi",
-                        search: { kode: head.code },
-                      });
-                    } catch (error) {
-                      toast.error("Perubahan booking gagal disimpan", {
-                        description:
-                          error instanceof Error
-                            ? error.message
-                            : "Periksa koneksi Supabase lalu coba lagi.",
-                      });
-                    }
-                  }}
+                  disabled={saving || !scheduleValid || anyFull}
+                  onClick={() => void handleSave()}
                 >
-                  {anyFull ? "Tanggal Penuh" : "Simpan Perubahan"}
+                  {saving ? "Menyimpan..." : "Simpan Perubahan"}
                 </Button>
-
+                <div className="mt-6 border-t pt-5">
+                  <Label>Status Booking</Label>
+                  <div className="mt-3 grid gap-2">
+                    {(["confirmed", "picked_up", "paid", "returned"] as const).map((status) => (
+                      <Button
+                        key={status}
+                        type="button"
+                        variant={head.status === status ? "default" : "outline"}
+                        className="w-full rounded-xl"
+                        onClick={() => void handleStatus(status)}
+                      >
+                        {statusLabel(status)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
                 <Button
                   size="lg"
                   variant="outline"
-                  className="mt-3 w-full rounded-full text-destructive"
-                  onClick={() => {
-                    removeBookingGroup(head.code);
-                    refresh();
-                    setQuery("");
-                    toast.success(`Booking ${head.code} dibatalkan`, {
-                      description: "Semua item pada nota ini kembali tersedia di jadwal.",
-                    });
-                    void navigate({ to: "/kelola-booking", search: {} });
-                  }}
+                  className="mt-5 w-full rounded-full text-destructive"
+                  onClick={() => void handleCancel()}
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Batalkan Seluruh Nota
                 </Button>
@@ -574,7 +544,52 @@ function KelolaBooking() {
     </SiteLayout>
   );
 }
-
+function TimeInput({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <Label htmlFor={`${id}-time`}>{label} (24 jam)</Label>
+      <Input
+        id={`${id}-time`}
+        type="time"
+        step="60"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-2 h-11 rounded-xl"
+      />
+    </div>
+  );
+}
+function formatDate(value?: Date) {
+  return value && !Number.isNaN(value.getTime())
+    ? format(value, "d MMM yyyy", { locale: localeId })
+    : "-";
+}
+function statusLabel(status: string) {
+  switch (status) {
+    case "confirmed":
+      return "Booking dikonfirmasi";
+    case "picked_up":
+      return "Sudah diambil";
+    case "paid":
+      return "Sudah dibayar";
+    case "returned":
+      return "Sudah kembali";
+    case "cancelled":
+      return "Dibatalkan";
+    default:
+      return "Menunggu konfirmasi admin";
+  }
+}
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4">

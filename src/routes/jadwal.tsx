@@ -25,7 +25,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { bookingsOn, dayStatusFor, toKey, useBookings, type DayStatus } from "@/data/bookings";
+import {
+  bookingsOn,
+  dayStatusFor,
+  formatWibDateTime,
+  toKey,
+  useBookings,
+  type DayStatus,
+} from "@/data/bookings";
 import { useCatalog } from "@/data/products";
 import { cn } from "@/lib/utils";
 
@@ -82,9 +89,7 @@ function Jadwal() {
 
   const selectedBookings = isSelectedPast
     ? []
-    : bookingsOn(bookings, selected).filter(
-        (b) => !filterId || b.productId === filterId,
-      );
+    : bookingsOn(bookings, selected).filter((b) => !filterId || b.productId === filterId);
   const selectedBookingGroups = useMemo(() => {
     const groups = new Map<
       string,
@@ -112,10 +117,12 @@ function Jadwal() {
           name: booking.name,
           code: booking.code,
           start: booking.start,
-          items: [{
-            productId: booking.productId,
-            qty: booking.qty,
-          }],
+          items: [
+            {
+              productId: booking.productId,
+              qty: booking.qty,
+            },
+          ],
         });
       }
     }
@@ -170,11 +177,13 @@ function Jadwal() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="semua">Semua koleksi</SelectItem>
-                  {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
+                  {products
+                    .filter((p) => p.active)
+                    .map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -214,7 +223,9 @@ function Jadwal() {
                   )}
                 >
                   <span>{format(day, "d")}</span>
-                  <span className="text-[10px] leading-none">{out > 0 ? `${out} keluar` : "kosong"}</span>
+                  <span className="text-[10px] leading-none">
+                    {out > 0 ? `${out} keluar` : "kosong"}
+                  </span>
                 </button>
               );
             })}
@@ -246,7 +257,8 @@ function Jadwal() {
               </div>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              Status tanggal: <span className="font-semibold text-foreground">{selectedInfo.status}</span>
+              Status tanggal:{" "}
+              <span className="font-semibold text-foreground">{selectedInfo.status}</span>
             </p>
           </div>
 
@@ -265,6 +277,9 @@ function Jadwal() {
                   >
                     <div className="border-b border-border bg-secondary px-4 py-3">
                       <p className="font-semibold">{group.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Ambil {formatWibDateTime(group.start)} · gunakan jam pada detail booking
+                      </p>
                     </div>
 
                     <div className="overflow-x-auto">
