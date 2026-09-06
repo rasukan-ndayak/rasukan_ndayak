@@ -555,15 +555,20 @@ function TimeInput({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const normalizeTime = (input: string) => input.replace(/[^\d:]/g, "").slice(0, 5);
+
   return (
     <div>
       <Label htmlFor={`${id}-time`}>{label} (24 jam)</Label>
       <Input
         id={`${id}-time`}
-        type="time"
-        step="60"
+        type="text"
+        inputMode="numeric"
+        maxLength={5}
+        pattern="[0-2][0-9]:[0-5][0-9]"
+        placeholder="HH:mm"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(normalizeTime(e.target.value))}
         className="mt-2 h-11 rounded-xl"
       />
     </div>
