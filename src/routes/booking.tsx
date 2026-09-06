@@ -384,7 +384,8 @@ function Booking() {
   const rows = useMemo(() => {
     return items.map((item) => {
       const product = products.find((p) => p.id === item.productId) ?? products[0]!;
-      const components = item.components.length ? item.components : product.components;
+      const itemComponents = item.components ?? [];
+      const components = itemComponents.length ? itemComponents : product.components ?? [];
       const componentProducts = components
         .map((component) => products.find((candidate) => candidate.id === component.productId))
         .filter((component): component is NonNullable<typeof component> => Boolean(component));
@@ -1130,6 +1131,8 @@ function Booking() {
                               productId: next.id,
 
                               qty: 1,
+
+                              components: next.components ?? [],
 
                               activeCategory: items[index]?.activeCategory ?? "Kostum",
                             },
