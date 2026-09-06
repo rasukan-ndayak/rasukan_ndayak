@@ -142,7 +142,7 @@ export async function loadBookings(): Promise<Booking[]> {
   if (!supabaseConfigured) return [];
   const rows = await selectRows<any>(
     "booking_items",
-    "select=id,qty,price_at_booking,product_id,booking_id,bookings!inner(id,code,start_date,end_date,pickup_at,performance_at,return_at,status,created_at,customer_id,customers(name,phone,description,member_status))&order=created_at.desc",
+    "select=id,qty,price_at_booking,product_id,booking_id,bookings!inner(id,code,start_date,end_date,pickup_at,performance_at,return_at,status,created_at,customer_id,customers(name,phone,description,member_status))&bookings.status=neq.cancelled&order=created_at.desc",
   );
   return rows.map(fromRow).filter((b) => Boolean(b.bookingId && b.productId));
 }
