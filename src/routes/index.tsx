@@ -476,11 +476,14 @@ function Index() {
           <div className="relative animate-rise">
             <div className="absolute -inset-6 -z-10 rounded-[3rem] bg-primary-soft blur-2xl" />
 
-            <img
-              src="/header.png"
-              alt="Header Rasukan Ndayak - Kostum adat Dayak"
-              className="mx-auto w-full max-w-lg rounded-[2.5rem] object-contain"
-            />
+            <picture className="block animate-hero-sway">
+              <source srcSet="/header.webp" type="image/webp" />
+              <img
+                src="/header.png"
+                alt="Header Rasukan Ndayak - Kostum adat Dayak"
+                className="mx-auto w-full max-w-lg rounded-[2.5rem] object-contain"
+              />
+            </picture>
           </div>
         </div>
       </section>

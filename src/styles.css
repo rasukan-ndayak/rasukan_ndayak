@@ -195,6 +195,28 @@
   animation: rise-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+@keyframes hero-sway {
+  0%,
+  100% {
+    transform: rotate(-0.6deg) translateY(0);
+  }
+  50% {
+    transform: rotate(0.6deg) translateY(-3px);
+  }
+}
+
+@utility animate-hero-sway {
+  animation: hero-sway 5s ease-in-out infinite;
+  transform-origin: 50% 85%;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-sway {
+    animation: none;
+  }
+}
+
 @utility scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
